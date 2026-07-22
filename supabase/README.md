@@ -2,7 +2,7 @@
 
 Este directorio contiene el esquema de base de datos (Fase 5, ver `docs/02-arquitectura.md`).
 
-**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0010` aplicadas. Las 6 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `create-next-game`, `game-command`) están desplegadas y probadas end-to-end. Realtime habilitado y probado con dos usuarios reales.
+**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0010` aplicadas. Las 7 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `start-next-round`, `create-next-game`, `game-command`) están desplegadas y probadas end-to-end. Realtime habilitado y probado con dos usuarios reales.
 
 Auth: login por magic link (email), habilitado por defecto — no se configuró OAuth de Google.
 
@@ -52,6 +52,10 @@ Si la sala tiene una deuda de codillo pendiente (`rooms.codillo_debtor_user_id`,
 
 `POST { roomId }` → `{ ok, gameId }`. Solo el anfitrión. Crea una nueva fila de `games` (`phase='lobby'`) en una sala ya existente, para volver a jugar. Rechaza con `409 GAME_IN_PROGRESS` si la sala todavía tiene una partida sin terminar — importante: tras un codillo con 2+ jugadores restantes, la partida actual *continúa* (§42), no termina; recién cuando esa partida termine de verdad (`phase='finished'`) se puede llamar a esta función.
 
+### `start-next-round`
+
+`POST { gameId }` → `{ ok, version, dealerPlayerId }`. Solo el anfitrión. Reparte la siguiente ronda **dentro de la misma partida** — a diferencia de `start-game`, que arma la primera ronda de una partida nueva. Cubre §42: tras un codillo con 2+ jugadores activos, la partida sigue, y reparte quien el motor ya calculó como `dealer_player_id` (no se vuelve a elegir al azar). Requiere `phase='waiting_for_reentry_decisions'` y que nadie siga en `flown_pending_reentry` sin decidir (§34).
+
 ### `game-command` (desplegada)
 
 Recibe `{ gameId, command }`, autentica al llamador por su JWT, resuelve su `playerId` desde `players.user_id = auth.uid()` (nunca confía en el `playerId` que venga en el body), carga el `GameState` completo, lo pasa por `processCommand()` del motor, y persiste el resultado vía la RPC `apply_game_command` con concurrencia optimista sobre `games.version`.
@@ -96,5 +100,4 @@ supabase
 ## Pendiente (siguiente iteración de Fase 5)
 
 - Reconexión: el `reconnect_timeout_seconds` de la sala está guardado pero nada lo usa todavía (requiere lógica de sesión/presencia).
-- Continuación de una partida tras un codillo con 2+ jugadores restantes (§42: la misma partida sigue, reparte el jugador a la derecha del expulsado) — hoy `start-game` solo sabe repartir la *primera* ronda de una partida nueva; falta el equivalente para rondas siguientes dentro de la misma `games` row (fase `starting_next_round` → `playing`).
 - Nada de esto se probó todavía desde una app real — todo el pipeline (incluido Realtime) se validó con llamadas HTTP/WebSocket directas (ver historial de commits para los scripts de smoke test).
