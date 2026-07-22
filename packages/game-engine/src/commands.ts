@@ -82,12 +82,15 @@ function recycleIfNeeded(state: GameState): { drawPile: Card[]; discardPile: Car
   return { drawPile: shuffleDeck(rest), discardPile: [top], recycled: true };
 }
 
-/** Termina el turno del jugador activo y avanza al siguiente (§23). */
-function endTurn(state: GameState, playerId: string): GameState {
-  const withCompletedFlag = updatePlayer(state, playerId, (player) => ({
-    ...player,
-    hasCompletedFirstTurn: true,
-  }));
+/**
+ * Termina el turno del jugador activo y avanza al siguiente (§23).
+ * `countsAsFirstTurn=false` es exclusivamente para el descarte inicial
+ * del repartidor, que NO habilita el golpe por sí solo (§10).
+ */
+function endTurn(state: GameState, playerId: string, countsAsFirstTurn = true): GameState {
+  const withCompletedFlag = countsAsFirstTurn
+    ? updatePlayer(state, playerId, (player) => ({ ...player, hasCompletedFirstTurn: true }))
+    : state;
   const next = getNextActivePlayer(playerId, withCompletedFlag.players);
   return {
     ...withCompletedFlag,
@@ -312,7 +315,9 @@ function handleDiscardCard(state: GameState, playerId: string, cardId: string): 
   if (state.phase !== "playing") {
     return err("INVALID_PHASE", "Solo se puede descartar durante la fase de juego normal.");
   }
-  if (!state.currentTurnHasDrawn && !state.currentTurnHasTakenDiscard) {
+
+  const isDealerOpeningDiscard = state.awaitingDealerOpeningDiscard && playerId === state.dealerPlayerId;
+  if (!isDealerOpeningDiscard && !state.currentTurnHasDrawn && !state.currentTurnHasTakenDiscard) {
     return err("MUST_ACT_FIRST", "Debe robar o tomar el descarte antes de descartar.");
   }
 
@@ -322,12 +327,18 @@ function handleDiscardCard(state: GameState, playerId: string, cardId: string): 
   }
 
   const card = player.hand.find((c) => c.id === cardId)!;
-  const stateWithoutCard = updatePlayer({ ...state, discardPile: [...state.discardPile, card] }, playerId, (p) => ({
-    ...p,
-    hand: removeCards(p.hand, [cardId]),
-  }));
+  const stateWithoutCard = updatePlayer(
+    {
+      ...state,
+      discardPile: [...state.discardPile, card],
+      awaitingDealerOpeningDiscard: isDealerOpeningDiscard ? false : state.awaitingDealerOpeningDiscard,
+    },
+    playerId,
+    (p) => ({ ...p, hand: removeCards(p.hand, [cardId]) }),
+  );
 
-  const nextState = endTurn(stateWithoutCard, playerId);
+  // El descarte inicial del repartidor no cuenta como turno completo (§10).
+  const nextState = endTurn(stateWithoutCard, playerId, !isDealerOpeningDiscard);
 
   return ok({ state: nextState, events: [{ type: "CARD_DISCARDED", playerId }] });
 }

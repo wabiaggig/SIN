@@ -51,6 +51,7 @@ function makeState(overrides: Partial<GameState> & { players: PlayerGameState[] 
     resolutionOrder: [],
     resolutionIndex: 0,
     roundResults: [],
+    awaitingDealerOpeningDiscard: false,
     ...overrides,
   };
 }
@@ -93,6 +94,58 @@ describe("normal turn: draw then discard", () => {
       drawPile: [card("2", "hearts")],
     });
     const result = processCommand(state, { type: "DRAW_CARD", playerId: "p2" });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("descarte inicial del repartidor (§8, §10)", () => {
+  it("el repartidor puede descartar sin haber robado ni tomado el descarte", () => {
+    const dealtCard = card("K", "spades");
+    const p1 = makePlayer({ playerId: "p1", hand: [dealtCard] });
+    const p2 = makePlayer({ playerId: "p2" });
+    const state = makeState({
+      players: [p1, p2],
+      activePlayerId: "p1",
+      dealerPlayerId: "p1",
+      awaitingDealerOpeningDiscard: true,
+    });
+
+    const result = processCommand(state, { type: "DISCARD_CARD", playerId: "p1", cardId: dealtCard.id });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.activePlayerId).toBe("p2");
+    expect(result.value.state.awaitingDealerOpeningDiscard).toBe(false);
+  });
+
+  it("el descarte inicial del repartidor no cuenta como turno completo (no habilita su golpe)", () => {
+    const dealtCard = card("K", "spades");
+    const p1 = makePlayer({ playerId: "p1", hand: [dealtCard] });
+    const p2 = makePlayer({ playerId: "p2" });
+    const state = makeState({
+      players: [p1, p2],
+      activePlayerId: "p1",
+      dealerPlayerId: "p1",
+      awaitingDealerOpeningDiscard: true,
+    });
+
+    const result = processCommand(state, { type: "DISCARD_CARD", playerId: "p1", cardId: dealtCard.id });
+    if (!result.ok) throw new Error("expected ok");
+    const finalP1 = result.value.state.players.find((p) => p.playerId === "p1")!;
+    expect(finalP1.hasCompletedFirstTurn).toBe(false);
+  });
+
+  it("un jugador que no es el repartidor sigue necesitando robar o tomar el descarte", () => {
+    const dealtCard = card("K", "spades");
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2", hand: [dealtCard] });
+    const state = makeState({
+      players: [p1, p2],
+      activePlayerId: "p2",
+      dealerPlayerId: "p1",
+      awaitingDealerOpeningDiscard: true,
+    });
+
+    const result = processCommand(state, { type: "DISCARD_CARD", playerId: "p2", cardId: dealtCard.id });
     expect(result.ok).toBe(false);
   });
 });

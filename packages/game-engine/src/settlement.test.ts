@@ -34,6 +34,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
     resolutionOrder: [],
     resolutionIndex: 0,
     roundResults: [],
+    awaitingDealerOpeningDiscard: false,
     ...overrides,
   };
 }

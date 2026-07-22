@@ -1,5 +1,6 @@
 export * from "./types.js";
 export * from "./turnOrder.js";
+export * from "./dealing.js";
 export * from "./commands.js";
 export * from "./points.js";
 export * from "./deck.js";

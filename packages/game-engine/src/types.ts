@@ -125,6 +125,14 @@ export type GameState = {
   resolutionOrder: string[];
   resolutionIndex: number;
   roundResults: RoundResult[];
+  /**
+   * El repartidor inicia la ronda descartando una carta, sin haber
+   * robado ni tomado el descarte antes (§8), y ese descarte NO cuenta
+   * como turno completo para habilitar el golpe (§10). Este flag deja
+   * que handleDiscardCard distinga ese descarte inicial de un descarte
+   * normal de fin de turno.
+   */
+  awaitingDealerOpeningDiscard: boolean;
 };
 
 export type GameEvent =
