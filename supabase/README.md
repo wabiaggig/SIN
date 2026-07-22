@@ -2,7 +2,7 @@
 
 Este directorio contiene el esquema de base de datos (Fase 5, ver `docs/02-arquitectura.md`).
 
-**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0007` aplicadas. Las 5 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `game-command`) están desplegadas y probadas end-to-end con un pipeline completo: crear sala → 3 jugadores se unen → confirman entrada → el host inicia la partida (reparto real) → un jugador juega un turno. Realtime también está habilitado y probado con dos usuarios reales (ver sección propia más abajo).
+**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0010` aplicadas. Las 6 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `create-next-game`, `game-command`) están desplegadas y probadas end-to-end. Realtime habilitado y probado con dos usuarios reales.
 
 Auth: login por magic link (email), habilitado por defecto — no se configuró OAuth de Google.
 
@@ -44,7 +44,13 @@ Todas comparten `_shared/auth.ts` (verifica el JWT del llamador y devuelve un cl
 
 ### `start-game`
 
-`POST { gameId }` → `{ ok, version, dealerPlayerId }`. Solo el anfitrión. Requiere ≥3 jugadores `active` (§3). Elige repartidor al azar (`crypto.getRandomValues`, una de las opciones documentadas en §7), baraja dos barajas sin semilla, y arma la ronda inicial con `startNewRound()` del motor — persistida reutilizando la misma RPC `apply_game_command` que usa `game-command` (un reparto inicial es, en el fondo, otro resultado de estado más).
+`POST { gameId }` → `{ ok, version, dealerPlayerId, codilloSettlement }`. Solo el anfitrión. Requiere ≥3 jugadores `active` (§3). Elige repartidor al azar (`crypto.getRandomValues`, una de las opciones documentadas en §7), baraja dos barajas sin semilla, y arma la ronda inicial con `startNewRound()` del motor — persistida reutilizando la misma RPC `apply_game_command` que usa `game-command` (un reparto inicial es, en el fondo, otro resultado de estado más).
+
+Si la sala tiene una deuda de codillo pendiente (`rooms.codillo_debtor_user_id`, ver §41), la liquida acá: `codilloSettlement: { debtorUserId, amount }` donde `amount = initial_entry_amount × cantidad de jugadores activos` (funciona igual participe el deudor o no — coincide con el ejemplo del reglamento), y limpia el campo. Si no había deuda pendiente, `codilloSettlement` es `null`.
+
+### `create-next-game`
+
+`POST { roomId }` → `{ ok, gameId }`. Solo el anfitrión. Crea una nueva fila de `games` (`phase='lobby'`) en una sala ya existente, para volver a jugar. Rechaza con `409 GAME_IN_PROGRESS` si la sala todavía tiene una partida sin terminar — importante: tras un codillo con 2+ jugadores restantes, la partida actual *continúa* (§42), no termina; recién cuando esa partida termine de verdad (`phase='finished'`) se puede llamar a esta función.
 
 ### `game-command` (desplegada)
 
@@ -90,5 +96,5 @@ supabase
 ## Pendiente (siguiente iteración de Fase 5)
 
 - Reconexión: el `reconnect_timeout_seconds` de la sala está guardado pero nada lo usa todavía (requiere lógica de sesión/presencia).
-- Codillo → siguiente partida: cuando el motor marca a alguien `codillo_eliminated`, el reglamento dice que debe pagar las entradas de la próxima partida (§41) — eso todavía no está implementado en `confirm-entry`/`create-room`.
+- Continuación de una partida tras un codillo con 2+ jugadores restantes (§42: la misma partida sigue, reparte el jugador a la derecha del expulsado) — hoy `start-game` solo sabe repartir la *primera* ronda de una partida nueva; falta el equivalente para rondas siguientes dentro de la misma `games` row (fase `starting_next_round` → `playing`).
 - Nada de esto se probó todavía desde una app real — todo el pipeline (incluido Realtime) se validó con llamadas HTTP/WebSocket directas (ver historial de commits para los scripts de smoke test).
