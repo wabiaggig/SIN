@@ -2,7 +2,7 @@
 
 Este directorio contiene el esquema de base de datos (Fase 5, ver `docs/02-arquitectura.md`).
 
-**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0004` aplicadas. Las 5 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `game-command`) están desplegadas y probadas end-to-end con un pipeline completo: crear sala → 3 jugadores se unen → confirman entrada → el host inicia la partida (reparto real) → un jugador juega un turno.
+**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0007` aplicadas. Las 5 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `game-command`) están desplegadas y probadas end-to-end con un pipeline completo: crear sala → 3 jugadores se unen → confirman entrada → el host inicia la partida (reparto real) → un jugador juega un turno. Realtime también está habilitado y probado con dos usuarios reales (ver sección propia más abajo).
 
 Auth: login por magic link (email), habilitado por defecto — no se configuró OAuth de Google.
 
@@ -69,9 +69,26 @@ Content-Type: application/json
 
 Respuestas: `200 { ok: true, version, events }` · `400` error de regla de juego (`{ error: { code, message } }`) · `403` el usuario no es jugador de esa partida · `409` conflicto de versión (reintentar) · `401` sin autenticar.
 
+## Realtime
+
+Habilitado (`0005_enable_realtime.sql`) sobre `games`, `players`, `player_hands`, `table_groups`, `table_group_cards`, `game_events`, `scoreboard_rounds` — todas con `REPLICA IDENTITY FULL`. `game_secrets` queda deliberadamente fuera (no tiene política de `SELECT`, así que no serviría de nada agregarla).
+
+El cliente se suscribe así (patrón estándar, sin necesidad de `private: true` ni `setAuth()` manual — basta con estar logueado):
+
+```js
+supabase
+  .channel(`game-${gameId}`)
+  .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `game_id=eq.${gameId}` }, handler)
+  .on("postgres_changes", { event: "*", schema: "public", table: "player_hands" }, handler) // RLS ya filtra a la mano propia
+  .subscribe();
+```
+
+**Bug real encontrado y resuelto (`0006`):** la política de `players` era auto-referencial (`EXISTS (SELECT ... FROM players ...)` dentro de la política de `players`), y eso hacía que Realtime descartara TODOS los eventos en silencio — sin error, sin log, nada — para cualquier tabla cuya política dependiera de `players` (o sea, casi todo el esquema). Se detectó recién probando con dos usuarios reales y un JWT real; una prueba superficial (o solo `SELECT` normal por PostgREST, que sí funciona bien con políticas auto-referenciales) nunca lo habría mostrado. El fix fue envolver la consulta en una función `SECURITY DEFINER` (`is_member_of_game()`). Detalle completo en `docs/02-arquitectura.md` §5.
+
+**Regla para toda política nueva en este proyecto: ninguna política RLS puede hacer `EXISTS`/`JOIN` contra su propia tabla.** Si hace falta, usar una función `SECURITY DEFINER` como intermediario.
+
 ## Pendiente (siguiente iteración de Fase 5)
 
-- Canales de Supabase Realtime por partida (`game:{gameId}:public` y `game:{gameId}:player:{playerId}`), según `docs/02-arquitectura.md` §5. Como las tablas ya tienen RLS, los `postgres_changes` deberían filtrarse automáticamente por jugador sin plumbing adicional — falta verificarlo en la práctica.
 - Reconexión: el `reconnect_timeout_seconds` de la sala está guardado pero nada lo usa todavía (requiere lógica de sesión/presencia).
 - Codillo → siguiente partida: cuando el motor marca a alguien `codillo_eliminated`, el reglamento dice que debe pagar las entradas de la próxima partida (§41) — eso todavía no está implementado en `confirm-entry`/`create-room`.
-- Nada de esto se probó todavía desde una app real — todo el pipeline se validó con llamadas HTTP directas (ver historial de commits para los scripts de smoke test).
+- Nada de esto se probó todavía desde una app real — todo el pipeline (incluido Realtime) se validó con llamadas HTTP/WebSocket directas (ver historial de commits para los scripts de smoke test).

@@ -104,6 +104,20 @@ Canales Realtime sugeridos por partida:
 
 Row Level Security en `player_hands`: cada fila solo visible para `auth.uid() = players.user_id` vía join. El resto de jugadores nunca reciben el contenido de manos ajenas, solo su longitud (se puede exponer como columna derivada `hand_count` en `players`, no en `player_hands`).
 
+### Gotcha real de Realtime + RLS (encontrado y resuelto en producción)
+
+Al probar Realtime end-to-end (dos usuarios reales, JWT reales, suscritos a `postgres_changes`), **ningún evento llegaba a ningún cliente autenticado**, ni siquiera cambios que su propia política RLS debería permitir — sin ningún error visible, solo silencio.
+
+Causa raíz, aislada con tablas de prueba dedicadas: la política de `players` (`players_select_same_game`) era **auto-referencial** — su `USING` hace un `EXISTS (SELECT 1 FROM players ...)` sobre la misma tabla que protege. Postgres RLS normal resuelve esto sin problema en un `SELECT` directo, pero el motor de Realtime (WALRUS) que filtra `postgres_changes` no evalúa correctamente políticas auto-referenciales — el evento se descarta en silencio. Como todas las demás políticas del esquema hacen `EXISTS (... FROM players ...)`, el problema se propagaba en cascada a `player_hands`, `table_groups`, `table_group_cards`, `game_events` y `scoreboard_rounds`.
+
+Confirmado empíricamente (tablas de prueba aisladas, ver historial de `supabase/migrations/0006`):
+- Política `using (true)` → funciona.
+- Política `using (auth.uid() = columna)` → funciona.
+- `EXISTS` a **otra** tabla (no auto-referencial) → funciona.
+- `EXISTS` a **la misma** tabla → falla en silencio, específicamente en el pipeline de Realtime.
+
+**Regla general para este proyecto:** ninguna política RLS puede consultar su propia tabla directamente. Cuando haga falta (como en `players_select_same_game`), envolver la subconsulta en una función `SECURITY DEFINER` — al ejecutarse como el dueño de la función, evade RLS internamente y rompe la auto-referencia desde la perspectiva de Realtime. Ver `is_member_of_game()` en `supabase/migrations/0006_fix_self_referential_players_policy.sql`.
+
 ## 6. Estrategia de reconexión
 
 1. El cliente se autentica con Supabase Auth y guarda `playerId`/`gameId` localmente.
