@@ -2,7 +2,7 @@
 
 Este directorio contiene el esquema de base de datos (Fase 5, ver `docs/02-arquitectura.md`).
 
-**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0004` aplicadas. La Edge Function `game-command` está desplegada y probada end-to-end (JWT real → motor → persistencia).
+**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migraciones `0001`-`0004` aplicadas. Las 5 Edge Functions (`create-room`, `join-room`, `confirm-entry`, `start-game`, `game-command`) están desplegadas y probadas end-to-end con un pipeline completo: crear sala → 3 jugadores se unen → confirman entrada → el host inicia la partida (reparto real) → un jugador juega un turno.
 
 Auth: login por magic link (email), habilitado por defecto — no se configuró OAuth de Google.
 
@@ -27,6 +27,24 @@ Puntos clave:
 - **`rooms`**: visibles solo para el anfitrión o para quien ya tiene un asiento en una partida de esa sala. El descubrimiento de una sala por código de invitación pasa por la función `get_room_by_invite_code()` (SECURITY DEFINER), que expone solo los campos públicos necesarios para decidir si unirse — no por `SELECT` directo sobre `rooms`.
 
 ## Edge Functions
+
+Todas comparten `_shared/auth.ts` (verifica el JWT del llamador y devuelve un cliente `service_role`) y `_shared/response.ts`.
+
+### `create-room`
+
+`POST { name, maxPlayers, isPrivate?, currencyCode?, currencySymbol?, initialEntryAmount?, reentryWithSinAmount?, reentryWithoutSinAmount?, sinBonusAmountPerOpponent?, reconnectTimeoutSeconds? }` → `{ ok, roomId, gameId, inviteCode }`. El llamador queda como `host_user_id`; crea también la primera fila de `games` (`phase='lobby'`) y su `game_secrets` vacío. El anfitrión no obtiene un asiento automáticamente — también debe llamar a `join-room`.
+
+### `join-room`
+
+`POST { inviteCode, displayName, avatarUrl? }` → `{ ok, roomId, gameId, playerId, seatIndex }`. Busca la sala vía `get_room_by_invite_code` (nunca `SELECT` directo sobre `rooms`), encuentra su partida en `lobby`/`waiting_for_entries`, asigna el siguiente asiento. Rechaza si ya está lleno o si el usuario ya tiene asiento ahí.
+
+### `confirm-entry`
+
+`POST { gameId }` → `{ ok, playerId, paid }`. Pasa al jugador de `waiting` a `active`, descuenta la entrada inicial de la sala, la suma al pozo, y crea su fila vacía en `player_hands`.
+
+### `start-game`
+
+`POST { gameId }` → `{ ok, version, dealerPlayerId }`. Solo el anfitrión. Requiere ≥3 jugadores `active` (§3). Elige repartidor al azar (`crypto.getRandomValues`, una de las opciones documentadas en §7), baraja dos barajas sin semilla, y arma la ronda inicial con `startNewRound()` del motor — persistida reutilizando la misma RPC `apply_game_command` que usa `game-command` (un reparto inicial es, en el fondo, otro resultado de estado más).
 
 ### `game-command` (desplegada)
 
@@ -53,6 +71,7 @@ Respuestas: `200 { ok: true, version, events }` · `400` error de regla de juego
 
 ## Pendiente (siguiente iteración de Fase 5)
 
-- Función de reparto/barajado inicial que arme la primera ronda (`startNewRound()` del motor ya existe; falta la Edge Function/RPC que la invoque y cree las filas iniciales de `games`/`players`/`player_hands`/`game_secrets`).
-- Canales de Supabase Realtime por partida (`game:{gameId}:public` y `game:{gameId}:player:{playerId}`), según `docs/02-arquitectura.md` §5.
-- Endpoint de creación de sala / unión por código de invitación.
+- Canales de Supabase Realtime por partida (`game:{gameId}:public` y `game:{gameId}:player:{playerId}`), según `docs/02-arquitectura.md` §5. Como las tablas ya tienen RLS, los `postgres_changes` deberían filtrarse automáticamente por jugador sin plumbing adicional — falta verificarlo en la práctica.
+- Reconexión: el `reconnect_timeout_seconds` de la sala está guardado pero nada lo usa todavía (requiere lógica de sesión/presencia).
+- Codillo → siguiente partida: cuando el motor marca a alguien `codillo_eliminated`, el reglamento dice que debe pagar las entradas de la próxima partida (§41) — eso todavía no está implementado en `confirm-entry`/`create-room`.
+- Nada de esto se probó todavía desde una app real — todo el pipeline se validó con llamadas HTTP directas (ver historial de commits para los scripts de smoke test).
