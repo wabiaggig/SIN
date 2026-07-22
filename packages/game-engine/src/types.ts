@@ -204,7 +204,15 @@ export type RoundState = {
 
 export type RoundResult = {
   playerId: string;
+  /** Puntos registrados para acumulación (0 si el jugador se cruzó). */
   roundPoints: number;
+  /**
+   * Puntos reales en mano, sin el efecto de la cruz. Si se omite, se
+   * asume igual a `roundPoints` (caso sin cruz). Se usa para la
+   * comparación de codillo — decisión de producto: la cruz no debe
+   * poder generar ni evitar un codillo (docs/01-analisis-funcional.md).
+   */
+  realPoints?: number;
 };
 
 export type GameSettlement = {

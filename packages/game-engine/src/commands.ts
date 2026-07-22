@@ -368,9 +368,21 @@ function handleKnock(state: GameState, playerId: string): Result<CommandOutcome>
   return ok({ state: nextState, events: [{ type: "KNOCK_DECLARED", playerId }] });
 }
 
-/** Cierra el resultado de ronda del jugador que está resolviendo y avanza. */
-function advanceResolution(state: GameState, playerId: string, roundPoints: number): CommandOutcome {
-  const withResult: GameState = { ...state, roundResults: [...state.roundResults, { playerId, roundPoints }] };
+/**
+ * Cierra el resultado de ronda del jugador que está resolviendo y avanza.
+ * `roundPoints` es lo que se acumula (0 si se cruzó); `realPoints` es el
+ * puntaje real de la mano, usado solo para la comparación de codillo.
+ */
+function advanceResolution(
+  state: GameState,
+  playerId: string,
+  roundPoints: number,
+  realPoints: number,
+): CommandOutcome {
+  const withResult: GameState = {
+    ...state,
+    roundResults: [...state.roundResults, { playerId, roundPoints, realPoints }],
+  };
   const nextIndex = withResult.resolutionIndex + 1;
 
   if (nextIndex < withResult.resolutionOrder.length) {
@@ -479,7 +491,7 @@ function handleUseCross(state: GameState, playerId: string): Result<CommandOutco
   }
 
   const stateWithCrossUsed = updatePlayer(state, playerId, (p) => ({ ...p, crossState: "used" }));
-  const resolutionOutcome = advanceResolution(stateWithCrossUsed, playerId, 0);
+  const resolutionOutcome = advanceResolution(stateWithCrossUsed, playerId, 0, roundPoints);
 
   return ok({
     state: resolutionOutcome.state,
@@ -496,7 +508,7 @@ function handleConfirmResolution(state: GameState, playerId: string): Result<Com
 
   const player = findPlayer(state, playerId)!;
   const roundPoints = calculateHandPoints(player.hand);
-  const resolutionOutcome = advanceResolution(state, playerId, roundPoints);
+  const resolutionOutcome = advanceResolution(state, playerId, roundPoints, roundPoints);
 
   return ok(resolutionOutcome);
 }

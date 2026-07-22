@@ -142,6 +142,7 @@ Estas ambigüedades fueron identificadas en `PROMPT.md` y **ya fueron resueltas 
 7. **Bots** (§56): declarados explícitamente fuera del MVP, pero se menciona como posibilidad futura para reemplazar jugadores desconectados. No requiere definición ahora.
 8. **Royal con comodín en mano vacía de cartas naturales** (§18, §43): ~~límite de comodines no explícito~~. **Resuelto:** sin límite artificial de comodines dentro del royal; se valida únicamente que las cartas naturales presentes sean consistentes con una única escalera de 7 posiciones del mismo palo (los comodines cubren el resto).
 9. **Reconexión — límite de espera** (§56): ~~es una recomendación, no una regla obligatoria~~. **Resuelto:** configurable por el anfitrión al crear la sala, con 60 segundos como valor por defecto.
+10. **Cruz vs. codillo** (§30, §40, descubierta al implementar `@sin/game-engine`): la cruz "registra la ronda como cero" (§30), pero el reglamento no aclara si ese cero cuenta para la comparación de codillo (§40, "el golpeador tiene más puntos que todos los demás"). Tomado literalmente, un jugador cruzado con puntaje real >0 podría gatillar o evitar un codillo artificialmente. **Resuelto (2026-07-22):** la comparación de codillo usa el puntaje REAL de la mano de cada jugador, no el registrado tras la cruz — la cruz no puede generar ni evitar un codillo. Implementado en `packages/game-engine/src/codillo.ts` vía el campo `RoundResult.realPoints`.
 
 ## 8. Criterios de aceptación
 

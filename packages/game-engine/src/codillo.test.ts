@@ -35,4 +35,22 @@ describe("detectCodillo", () => {
     ];
     expect(detectCodillo("knocker", results, ["p2"])).toBe(false);
   });
+
+  it("la cruz no puede generar codillo: compara contra el puntaje real, no el registrado", () => {
+    // p2 se cruzó: roundPoints=0 (registrado), pero su mano real tenía 8 puntos.
+    const results = [
+      { playerId: "knocker", roundPoints: 5, realPoints: 5 },
+      { playerId: "p2", roundPoints: 0, realPoints: 8 },
+    ];
+    expect(detectCodillo("knocker", results, [])).toBe(false);
+  });
+
+  it("la cruz no puede evitar un codillo real", () => {
+    // p2 se cruzó, pero su puntaje real (2) sigue siendo menor al del golpeador (5).
+    const results = [
+      { playerId: "knocker", roundPoints: 5, realPoints: 5 },
+      { playerId: "p2", roundPoints: 0, realPoints: 2 },
+    ];
+    expect(detectCodillo("knocker", results, [])).toBe(true);
+  });
 });
