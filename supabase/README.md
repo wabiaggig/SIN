@@ -1,18 +1,18 @@
 # SIN — Supabase
 
-Este directorio contiene el esquema de base de datos (Fase 5, ver `docs/02-arquitectura.md`). Todavía no está desplegado — aquí están los pasos para cuando exista una cuenta/proyecto de Supabase.
+Este directorio contiene el esquema de base de datos (Fase 5, ver `docs/02-arquitectura.md`).
 
-## Aplicar la migración
+**Estado:** desplegado en el proyecto `SIN-Game` (`dobxodpcmjdnvddxfwxu`, región us-west-2). Migración `0001_init_schema.sql` aplicada.
+
+## Aplicar una nueva migración
+
+El proyecto ya está vinculado (`supabase link` ya se corrió). Para aplicar una migración nueva, agregá el archivo SQL a `migrations/` con el siguiente número de secuencia y corré:
 
 ```bash
-npm install -g supabase
-supabase login
-supabase init          # si no existe ya un supabase/config.toml
-supabase link --project-ref <tu-project-ref>
-supabase db push
+npx supabase db push
 ```
 
-`supabase db push` aplica todos los archivos en `migrations/` en orden.
+`supabase db push` aplica todos los archivos pendientes en `migrations/` en orden.
 
 ## Modelo de seguridad (RLS)
 
