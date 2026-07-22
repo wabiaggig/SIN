@@ -131,17 +131,17 @@ turn_start
 
 ## 7. Casos límite y contradicciones detectadas
 
-Estas son ambigüedades reales en `PROMPT.md` que deben resolverse con el usuario antes de implementar la lógica correspondiente — **no se han inventado soluciones**:
+Estas ambigüedades fueron identificadas en `PROMPT.md` y **ya fueron resueltas junto con el usuario** (2026-07-22). Se conserva el texto original tachado para trazabilidad, seguido de la resolución adoptada:
 
-1. **Modo espectador**: no se menciona en ninguna sección. Pantallas (§57) no lo contemplan. Asumir que no existe en el MVP salvo indicación contraria.
+1. **Modo espectador**: ~~no se menciona~~. **Resuelto:** fuera del MVP. No existe rol de espectador; todo participante de una sala es jugador.
 2. **Tiempo máximo por turno** (§6.1, campo `Tiempo máximo opcional por turno`): ~~el reglamento no especifica qué ocurre si un jugador no actúa a tiempo~~. **Resuelto:** no se implementa límite de tiempo en el MVP; el campo queda como configuración reservada para una versión futura. Los turnos no expiran automáticamente.
-3. **Corte simbólico del mazo** (§7): dice que "el corte puede representarse mediante una animación" y que "el servidor conserva la autoridad sobre el orden real del mazo" — esto implica que el corte del jugador es puramente cosmético y no afecta el orden real. Confirmar que es la interpretación correcta antes de implementar, porque contradice la expectativa de que el corte tenga efecto real sobre el mazo.
-4. **Empate en el número de jugadores para reingreso** (§34): "El reingreso solo es posible si, después de resolver la ronda, quedan al menos dos jugadores que no volaron" — no aclara si esto cuenta jugadores ya eliminados por codillo en la misma ronda. Se asume que expulsión por codillo no cuenta como "jugador activo" a efectos de este conteo, pero debe confirmarse.
-5. **Codillo y reingreso simultáneos en la misma ronda**: si en la misma ronda hay codillo Y jugadores que volaron, el orden de evaluación (§26 vs §40) no está explícito. Se asume: primero se determina codillo (expulsión inmediata del golpeador), luego se evalúan vuelos del resto de jugadores, luego reingresos — pero el reglamento no lo declara en ese orden de forma inequívoca.
-6. **Dos jugadores (modalidad reducida)** (§3): se menciona que existe una modalidad tipo "Golpeado con puntaje" para 2 jugadores pero "no es la modalidad principal". No se especifican sus reglas. **Excluida del MVP** salvo que el usuario decida documentarla aparte.
+3. **Corte simbólico del mazo** (§7): ~~confirmar interpretación~~. **Resuelto:** el corte es puramente cosmético/animación; el servidor baraja con RNG seguro y fija el orden real sin que el corte del jugador lo modifique.
+4. **Empate en el número de jugadores para reingreso** (§34): ~~no aclara si cuenta jugadores eliminados por codillo~~. **Resuelto:** el jugador expulsado por codillo NO cuenta en el conteo de "jugadores que no volaron"; el conteo se hace solo sobre jugadores que permanecen activos en la partida tras la expulsión.
+5. **Codillo y reingreso simultáneos en la misma ronda**: ~~orden de evaluación no explícito~~. **Resuelto:** se evalúa primero el codillo (expulsión inmediata del golpeador si aplica), luego se detectan los vuelos del resto de jugadores de esa ronda, y por último se ofrecen los reingresos.
+6. **Dos jugadores (modalidad reducida)** (§3): se menciona una modalidad tipo "Golpeado con puntaje" para 2 jugadores pero sin reglas propias. **Resuelto:** excluida del MVP. Las salas se configuran con mínimo 3 jugadores.
 7. **Bots** (§56): declarados explícitamente fuera del MVP, pero se menciona como posibilidad futura para reemplazar jugadores desconectados. No requiere definición ahora.
-8. **Royal con comodín en mano vacía de cartas naturales** (§18, §43): no está claro cuántos comodines como máximo puede contener un royal (¿puede haber 2+ comodines en las 7 cartas?). El ejemplo `2, 3, comodín, 5, 6, 7, 8` sugiere que sí puede haber al menos uno, pero no hay ejemplo con más de un comodín ni un límite explícito. Se recomienda no imponer un límite artificial y validar solo que las cartas naturales sean consistentes con una única escalera de 7 posiciones.
-9. **Reconexión — límite de espera** (§56): "Para el MVP se recomienda: Esperar hasta 60 segundos" — es una recomendación, no una regla obligatoria. Confirmar si se adopta tal cual.
+8. **Royal con comodín en mano vacía de cartas naturales** (§18, §43): ~~límite de comodines no explícito~~. **Resuelto:** sin límite artificial de comodines dentro del royal; se valida únicamente que las cartas naturales presentes sean consistentes con una única escalera de 7 posiciones del mismo palo (los comodines cubren el resto).
+9. **Reconexión — límite de espera** (§56): ~~es una recomendación, no una regla obligatoria~~. **Resuelto:** configurable por el anfitrión al crear la sala, con 60 segundos como valor por defecto.
 
 ## 8. Criterios de aceptación
 

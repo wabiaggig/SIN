@@ -34,10 +34,11 @@ Tablas principales (nombres orientativos):
 
 ```
 rooms
-  id, name, host_player_id, max_players, is_private, invite_code,
+  id, name, host_player_id, max_players (mín. 3), is_private, invite_code,
   currency_code, currency_symbol, initial_entry_amount,
   reentry_with_sin_amount, reentry_without_sin_amount,
-  sin_bonus_per_opponent, turn_time_limit_seconds, created_at
+  sin_bonus_per_opponent, turn_time_limit_seconds (reservado, sin efecto en MVP),
+  reconnect_timeout_seconds (default 60), created_at
 
 games
   id, room_id, phase, active_player_id, dealer_player_id,
@@ -125,9 +126,15 @@ Row Level Security en `player_hands`: cada fila solo visible para `auth.uid() = 
 - Solo el `active_player_id` puede emitir comandos de turno; comandos fuera de turno se rechazan con `GameRuleError`.
 - Las transacciones de escritura (persistir `newState` + insertar eventos) deben ser atómicas (una transacción Postgres) para evitar estados inconsistentes ante fallos parciales.
 
-## 9. Pendiente antes de Fase 4 (motor de juego)
+## 9. Decisiones cerradas (ver `01-analisis-funcional.md` §7)
 
-Antes de escribir código del `game-engine`, conviene resolver las contradicciones señaladas en `01-analisis-funcional.md` §7, especialmente:
-- comportamiento del "tiempo por turno",
-- orden de evaluación codillo vs. vuelos en la misma ronda,
-- alcance exacto de comodines dentro de un royal.
+Todas las ambigüedades del reglamento fueron resueltas con el usuario antes de iniciar el motor de juego:
+- Sin límite de tiempo por turno en el MVP (campo reservado).
+- Codillo se evalúa antes que los vuelos del resto de jugadores en la misma ronda.
+- Sin límite artificial de comodines dentro de un royal.
+- Corte de mazo puramente cosmético; el servidor decide el orden real.
+- Expulsado por codillo no cuenta en el conteo de "no volados" para habilitar reingresos.
+- Sin modo espectador ni modalidad de 2 jugadores en el MVP.
+- Timeout de reconexión configurable por el anfitrión (default 60s).
+
+Con esto, `game-engine` (Fase 4) puede implementarse sin decisiones de negocio pendientes.
