@@ -75,11 +75,12 @@ Deno.serve(async (req) => {
     );
   }
 
-  let state, expectedVersion: string;
+  let state, expectedVersion: string, roomId: string;
   try {
     const loaded = await loadGameState(adminClient, gameId);
     state = loaded.state;
     expectedVersion = loaded.version;
+    roomId = loaded.roomId;
   } catch (loadError) {
     return jsonResponse(
       { error: { code: "STATE_LOAD_FAILED", message: (loadError as Error).message } },
@@ -109,6 +110,26 @@ Deno.serve(async (req) => {
       );
     }
     return jsonResponse({ error: { code: "PERSIST_FAILED", message: rpcError.message } }, 500);
+  }
+
+  // Codillo (§41): quien golpeó y quedó expulsado debe pagar las entradas
+  // de la siguiente partida de esta sala. Se registra en rooms para que
+  // start-game lo liquide cuando arranque esa siguiente partida.
+  const codilloEvent = result.value.events.find((e) => e.type === "CODILLO_DECLARED") as
+    | { type: "CODILLO_DECLARED"; playerId: string }
+    | undefined;
+  if (codilloEvent) {
+    const { data: knockerPlayer } = await adminClient
+      .from("players")
+      .select("user_id")
+      .eq("id", codilloEvent.playerId)
+      .maybeSingle();
+    if (knockerPlayer) {
+      await adminClient
+        .from("rooms")
+        .update({ codillo_debtor_user_id: knockerPlayer.user_id })
+        .eq("id", roomId);
+    }
   }
 
   return jsonResponse({ ok: true, version: newVersion, events: result.value.events }, 200);

@@ -113,7 +113,23 @@ Deno.serve(async (req) => {
     });
     if (rpcError) throw new HttpError(500, "PERSIST_FAILED", rpcError.message);
 
-    return jsonResponse({ ok: true, version: newVersion, dealerPlayerId }, 200);
+    // Liquidación de la deuda por codillo (§41): el deudor paga la entrada
+    // de cada jugador que participa en esta partida (incluida la suya
+    // propia si decidió jugar) — en ambos casos, entryAmount * cantidad de
+    // activePlayers, que es exactamente como lo ilustra el ejemplo del
+    // reglamento. Se salda al arrancar y se limpia el campo en la sala.
+    let codilloSettlement: { debtorUserId: string; amount: number } | null = null;
+    if (room.codillo_debtor_user_id) {
+      const amount = Number(room.initial_entry_amount) * activePlayers.length;
+      codilloSettlement = { debtorUserId: room.codillo_debtor_user_id, amount };
+      const { error: clearDebtError } = await adminClient
+        .from("rooms")
+        .update({ codillo_debtor_user_id: null })
+        .eq("id", room.id);
+      if (clearDebtError) throw new HttpError(500, "DEBT_SETTLEMENT_FAILED", clearDebtError.message);
+    }
+
+    return jsonResponse({ ok: true, version: newVersion, dealerPlayerId, codilloSettlement }, 200);
   } catch (err) {
     return errorResponse(err);
   }

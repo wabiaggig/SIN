@@ -15,7 +15,7 @@ import type {
 export async function loadGameState(
   adminClient: any,
   gameId: string,
-): Promise<{ state: GameState; version: string }> {
+): Promise<{ state: GameState; version: string; roomId: string }> {
   const { data: game, error: gameError } = await adminClient
     .from("games")
     .select("*")
@@ -140,11 +140,11 @@ export async function loadGameState(
     currentTurnHasTakenDiscard: game.current_turn_has_taken_discard,
     resolutionOrder: game.resolution_order ?? [],
     resolutionIndex: game.resolution_index,
-    roundResults: [], // no se persiste entre comandos individuales; solo vive durante resolving_knock en memoria del propio comando
+    roundResults: game.round_results ?? [],
     awaitingDealerOpeningDiscard: game.awaiting_dealer_opening_discard ?? false,
   };
 
-  return { state, version: game.version };
+  return { state, version: game.version, roomId: game.room_id };
 }
 
 /** Serializa un CommandOutcome a los parámetros jsonb de apply_game_command. */
@@ -164,6 +164,7 @@ export function serializeOutcome(outcome: CommandOutcome) {
     currentTurnHasTakenDiscard: state.currentTurnHasTakenDiscard,
     resolutionOrder: state.resolutionOrder,
     resolutionIndex: state.resolutionIndex,
+    roundResults: state.roundResults,
     drawPileCount: state.drawPile.length,
     discardTopCard: state.discardPile.length > 0 ? state.discardPile[state.discardPile.length - 1] : null,
     awaitingDealerOpeningDiscard: state.awaitingDealerOpeningDiscard,
