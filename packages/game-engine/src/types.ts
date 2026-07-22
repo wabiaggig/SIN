@@ -113,6 +113,86 @@ export type GameState = {
   bettingConfig: BettingConfig;
   winnerPlayerId: string | null;
   winType: WinType | null;
+  /**
+   * Campos de control de turno/ronda no listados literalmente en
+   * PROMPT.md (que marca su modelo de estado como "sugerido") pero
+   * necesarios para que processCommand aplique las reglas de forma
+   * determinista: qué hizo el jugador activo en este turno, y en qué
+   * punto de la resolución post-golpe estamos.
+   */
+  currentTurnHasDrawn: boolean;
+  currentTurnHasTakenDiscard: boolean;
+  resolutionOrder: string[];
+  resolutionIndex: number;
+  roundResults: RoundResult[];
+};
+
+export type GameEvent =
+  | { type: "PLAYER_JOINED"; playerId: string }
+  | { type: "PLAYER_CONFIRMED_ENTRY"; playerId: string }
+  | { type: "DECK_SHUFFLED" }
+  | { type: "DECK_CUT"; playerId: string }
+  | { type: "CARDS_DEALT" }
+  | { type: "CARD_DRAWN"; playerId: string }
+  | { type: "DISCARD_TAKEN"; playerId: string }
+  | { type: "GROUP_LAID_DOWN"; playerId: string; groupId: string }
+  | { type: "CARD_ATTACHED"; playerId: string; groupId: string }
+  | { type: "CARD_DISCARDED"; playerId: string }
+  | { type: "DECK_RECYCLED" }
+  | { type: "KNOCK_DECLARED"; playerId: string }
+  | { type: "CROSS_USED"; playerId: string }
+  | { type: "PLAYER_FLEW"; playerId: string }
+  | { type: "PLAYER_REENTERED"; playerId: string; score: number }
+  | { type: "PLAYER_ELIMINATED"; playerId: string }
+  | { type: "CODILLO_DECLARED"; playerId: string }
+  | { type: "ROYAL_DECLARED"; playerId: string }
+  | { type: "SCOREBOARD_SUNG"; playerId: string }
+  | { type: "GAME_FINISHED"; winnerPlayerId: string };
+
+export type DrawCardCommand = { type: "DRAW_CARD"; playerId: string };
+export type TakeDiscardCommand = {
+  type: "TAKE_DISCARD";
+  playerId: string;
+  /** Cartas propias + la carta del descarte que forman el grupo inmediato (§13). */
+  groupCardIds: string[];
+};
+export type LayDownGroupCommand = { type: "LAY_DOWN_GROUP"; playerId: string; cardIds: string[] };
+export type AttachCardCommand = {
+  type: "ATTACH_CARD";
+  playerId: string;
+  groupId: string;
+  cardId: string;
+};
+export type DiscardCardCommand = { type: "DISCARD_CARD"; playerId: string; cardId: string };
+export type KnockCommand = { type: "KNOCK"; playerId: string };
+export type UseCrossCommand = { type: "USE_CROSS"; playerId: string };
+/**
+ * Cierra el paso de resolución del jugador activo durante resolving_knock
+ * y avanza al siguiente. No es una acción de juego documentada en
+ * PROMPT.md §66 — es una necesidad de la máquina de estados para saber
+ * cuándo un jugador terminó de bajar/enchufar/decidir su cruz.
+ */
+export type ConfirmResolutionCommand = { type: "CONFIRM_RESOLUTION"; playerId: string };
+export type ReenterCommand = { type: "REENTER"; playerId: string };
+export type DeclareRoyalCommand = { type: "DECLARE_ROYAL"; playerId: string };
+export type SingScoreboardCommand = { type: "SING_SCOREBOARD"; playerId: string };
+
+export type GameCommand =
+  | DrawCardCommand
+  | TakeDiscardCommand
+  | LayDownGroupCommand
+  | AttachCardCommand
+  | DiscardCardCommand
+  | KnockCommand
+  | UseCrossCommand
+  | ConfirmResolutionCommand
+  | ReenterCommand
+  | DeclareRoyalCommand
+  | SingScoreboardCommand;
+
+export type CommandOutcome = {
+  state: GameState;
+  events: GameEvent[];
 };
 
 export type RoundState = {

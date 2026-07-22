@@ -29,6 +29,11 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
     bettingConfig: config,
     winnerPlayerId: null,
     winType: null,
+    currentTurnHasDrawn: false,
+    currentTurnHasTakenDiscard: false,
+    resolutionOrder: [],
+    resolutionIndex: 0,
+    roundResults: [],
     ...overrides,
   };
 }
