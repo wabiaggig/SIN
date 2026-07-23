@@ -30,7 +30,9 @@ export default function Login() {
       <Text style={styles.subtitle}>Ingresá con tu email — te mandamos un enlace mágico, sin contraseña.</Text>
 
       {status === "sent" ? (
-        <Text style={styles.sent}>Revisá tu correo ({email}) y tocá el enlace para entrar.</Text>
+        <Text style={styles.sent} accessibilityLiveRegion="polite">
+          Revisá tu correo ({email}) y tocá el enlace para entrar.
+        </Text>
       ) : (
         <>
           <TextInput
@@ -42,11 +44,15 @@ export default function Login() {
             value={email}
             onChangeText={setEmail}
             editable={status !== "sending"}
+            accessibilityLabel="Email"
           />
           <Pressable
             style={[styles.button, status === "sending" && styles.buttonDisabled]}
             onPress={sendMagicLink}
             disabled={status === "sending"}
+            accessibilityRole="button"
+            accessibilityLabel="Enviar enlace mágico"
+            accessibilityState={{ disabled: status === "sending", busy: status === "sending" }}
           >
             {status === "sending" ? (
               <ActivityIndicator color="#fff" />

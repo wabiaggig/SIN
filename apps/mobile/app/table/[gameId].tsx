@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
+import { usePresence } from "../../lib/usePresence";
 import { gameCommand, createNextGame, joinRoom, startNextRound } from "../../lib/functions";
 import { PlayingCard } from "../../components/PlayingCard";
 import { DraggableHand } from "../../components/DraggableHand";
 import { handPoints } from "../../lib/cardDisplay";
 import { hasSin, statusColor, statusLabel } from "../../lib/playerStatus";
+import { describeEvent } from "../../lib/eventLabels";
 import type { Card, GameRow, PlayerRow, RoomRow, TableGroup } from "../../lib/types";
+
+type EventRow = { id: number; type: string; payload: Record<string, unknown>; created_at: string };
 
 const WIN_TYPE_LABEL: Record<string, string> = {
   normal: "Normal",
@@ -31,6 +35,8 @@ export default function Table() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -89,6 +95,31 @@ export default function Table() {
     setLoading(false);
   }, [gameId]);
 
+  const loadEvents = useCallback(async () => {
+    const { data } = await supabase
+      .from("game_events")
+      .select("id, type, payload, created_at")
+      .eq("game_id", gameId)
+      .order("id", { ascending: false })
+      .limit(50);
+    setEvents((data ?? []) as EventRow[]);
+  }, [gameId]);
+
+  useEffect(() => {
+    loadEvents();
+    const channel = supabase
+      .channel(`table-events-${gameId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "game_events", filter: `game_id=eq.${gameId}` },
+        (payload: any) => setEvents((prev) => [payload.new as EventRow, ...prev].slice(0, 50)),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [gameId, loadEvents]);
+
   useEffect(() => {
     load();
     const channel = supabase
@@ -126,6 +157,7 @@ export default function Table() {
     };
   }, [room, gameId]);
 
+  const onlineUserIds = usePresence(gameId!, userId);
   const me = useMemo(() => players.find((p) => p.user_id === userId), [players, userId]);
   const isHost = !!room && room.host_user_id === userId;
   const isMyTurn = !!me && game?.active_player_id === me.id;
@@ -180,7 +212,14 @@ export default function Table() {
     return (
       <View style={styles.center}>
         <Text style={styles.bigText}>Volaste 🪽</Text>
-        <Pressable style={styles.centerButton} disabled={busy} onPress={() => run({ type: "REENTER" })}>
+        <Pressable
+          style={styles.centerButton}
+          disabled={busy}
+          onPress={() => run({ type: "REENTER" })}
+          accessibilityRole="button"
+          accessibilityLabel="Reingresar a la ronda"
+          accessibilityState={{ disabled: busy, busy }}
+        >
           <Text style={styles.actionText}>Reingresar</Text>
         </Pressable>
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -212,6 +251,9 @@ export default function Table() {
                 setBusy(false);
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Repartir siguiente ronda"
+            accessibilityState={{ disabled: busy, busy }}
           >
             <Text style={styles.actionText}>Repartir siguiente ronda</Text>
           </Pressable>
@@ -282,6 +324,9 @@ export default function Table() {
                 setBusy(false);
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Jugar de nuevo"
+            accessibilityState={{ disabled: busy, busy }}
           >
             <Text style={styles.actionText}>Jugar de nuevo</Text>
           </Pressable>
@@ -298,9 +343,22 @@ export default function Table() {
       <ScrollView contentContainerStyle={styles.scrollBody}>
         <View style={styles.headerRow}>
           <Text style={styles.pot}>Pozo: {game.pot_amount}</Text>
-          <Pressable onPress={() => run({ type: "SING_SCOREBOARD" }).then(() => setScoreboardOpen(true))}>
-            <Text style={styles.link}>Cantar</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", gap: 16 }}>
+            <Pressable
+              onPress={() => setHistoryOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Ver historial de eventos"
+            >
+              <Text style={styles.link}>Historial</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => run({ type: "SING_SCOREBOARD" }).then(() => setScoreboardOpen(true))}
+              accessibilityRole="button"
+              accessibilityLabel="Ver tabla de puntajes"
+            >
+              <Text style={styles.link}>Cantar</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.turnBanner}>
@@ -313,7 +371,14 @@ export default function Table() {
         </View>
 
         <View style={styles.pilesRow}>
-          <Pressable style={styles.pile} disabled={!canDrawOrTake || busy} onPress={() => run({ type: "DRAW_CARD" })}>
+          <Pressable
+            style={styles.pile}
+            disabled={!canDrawOrTake || busy}
+            onPress={() => run({ type: "DRAW_CARD" })}
+            accessibilityRole="button"
+            accessibilityLabel={`Robar del mazo, ${game.draw_pile_count} cartas`}
+            accessibilityState={{ disabled: !canDrawOrTake || busy }}
+          >
             <View style={[styles.cardBack, !canDrawOrTake && styles.disabled]} />
             <Text style={styles.pileLabel}>Mazo ({game.draw_pile_count})</Text>
           </Pressable>
@@ -326,6 +391,9 @@ export default function Table() {
               const groupCardIds = [...selected, game.discard_top_card.id];
               run({ type: "TAKE_DISCARD", groupCardIds });
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Tomar carta del descarte"
+            accessibilityState={{ disabled: !canDrawOrTake || !game.discard_top_card || busy }}
           >
             {game.discard_top_card ? (
               <PlayingCard card={game.discard_top_card} />
@@ -349,6 +417,9 @@ export default function Table() {
                   if (!cardId) return;
                   run({ type: "ATTACH_CARD", groupId: group.id, cardId });
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Enchufar carta seleccionada a este grupo"
+                accessibilityState={{ disabled: !canPlayGroups || selected.size !== 1 || busy }}
               >
                 {group.cards.map((tc) => (
                   <PlayingCard key={tc.card.id} card={tc.card} small />
@@ -380,6 +451,9 @@ export default function Table() {
           style={[styles.actionButton, (!canPlayGroups || selected.size < 3) && styles.disabled]}
           disabled={!canPlayGroups || selected.size < 3 || busy}
           onPress={() => run({ type: "LAY_DOWN_GROUP", cardIds: [...selected] })}
+          accessibilityRole="button"
+          accessibilityLabel="Bajar grupo"
+          accessibilityState={{ disabled: !canPlayGroups || selected.size < 3 || busy }}
         >
           <Text style={styles.actionText}>Bajar</Text>
         </Pressable>
@@ -387,6 +461,9 @@ export default function Table() {
           style={[styles.actionButton, (!canDiscard || selected.size !== 1) && styles.disabled]}
           disabled={!canDiscard || selected.size !== 1 || busy}
           onPress={() => run({ type: "DISCARD_CARD", cardId: [...selected][0] })}
+          accessibilityRole="button"
+          accessibilityLabel="Descartar carta seleccionada"
+          accessibilityState={{ disabled: !canDiscard || selected.size !== 1 || busy }}
         >
           <Text style={styles.actionText}>Descartar</Text>
         </Pressable>
@@ -394,6 +471,9 @@ export default function Table() {
           style={[styles.actionButton, styles.knockButton, !canKnock && styles.disabled]}
           disabled={!canKnock || busy}
           onPress={() => run({ type: "KNOCK" })}
+          accessibilityRole="button"
+          accessibilityLabel="Golpear"
+          accessibilityState={{ disabled: !canKnock || busy }}
         >
           <Text style={styles.actionText}>Golpear</Text>
         </Pressable>
@@ -401,6 +481,9 @@ export default function Table() {
           style={styles.actionButton}
           disabled={busy || hand.length !== 7}
           onPress={() => run({ type: "DECLARE_ROYAL" })}
+          accessibilityRole="button"
+          accessibilityLabel="Declarar Royal"
+          accessibilityState={{ disabled: busy || hand.length !== 7 }}
         >
           <Text style={styles.actionText}>Royal</Text>
         </Pressable>
@@ -408,10 +491,24 @@ export default function Table() {
 
       {isResolving && isMyTurn ? (
         <View style={styles.resolutionBar}>
-          <Pressable style={styles.actionButton} disabled={busy} onPress={() => run({ type: "USE_CROSS" })}>
+          <Pressable
+            style={styles.actionButton}
+            disabled={busy}
+            onPress={() => run({ type: "USE_CROSS" })}
+            accessibilityRole="button"
+            accessibilityLabel="Usar cruz"
+            accessibilityState={{ disabled: busy }}
+          >
             <Text style={styles.actionText}>Usar cruz</Text>
           </Pressable>
-          <Pressable style={styles.actionButton} disabled={busy} onPress={() => run({ type: "CONFIRM_RESOLUTION" })}>
+          <Pressable
+            style={styles.actionButton}
+            disabled={busy}
+            onPress={() => run({ type: "CONFIRM_RESOLUTION" })}
+            accessibilityRole="button"
+            accessibilityLabel="Confirmar resolución"
+            accessibilityState={{ disabled: busy }}
+          >
             <Text style={styles.actionText}>Confirmar</Text>
           </Pressable>
         </View>
@@ -432,9 +529,17 @@ export default function Table() {
             </View>
             {players.map((p) => (
               <View key={p.id} style={styles.scoreRow}>
-                <Text style={[styles.scoreName, styles.scoreNameCol]} numberOfLines={1}>
-                  {p.display_name}
-                </Text>
+                <View style={[styles.scoreNameCol, { flexDirection: "row", alignItems: "center", gap: 6 }]}>
+                  <View
+                    style={[
+                      styles.onlineDot,
+                      onlineUserIds.has(p.user_id) ? styles.onlineDotOn : styles.onlineDotOff,
+                    ]}
+                  />
+                  <Text style={styles.scoreName} numberOfLines={1}>
+                    {p.display_name}
+                  </Text>
+                </View>
                 <Text style={styles.scoreCell}>{p.accumulated_points}</Text>
                 <Text style={styles.scoreCell}>{Math.max(0, MAX_SCORE - p.accumulated_points)}</Text>
                 <Text style={styles.scoreCell}>{hasSin(p) ? "Sí" : "—"}</Text>
@@ -443,6 +548,27 @@ export default function Table() {
                 </View>
               </View>
             ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={historyOpen} transparent animationType="fade" onRequestClose={() => setHistoryOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setHistoryOpen(false)}>
+          <Pressable style={[styles.modalCard, styles.historyCard]} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.sectionTitle}>Historial</Text>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {events.length === 0 ? (
+                <Text style={styles.hint}>Todavía no hay eventos.</Text>
+              ) : (
+                events.map((event) => (
+                  <View key={event.id} style={styles.historyRow}>
+                    <Text style={styles.historyText}>
+                      {describeEvent(event.payload as any, (id) => players.find((p) => p.id === id)?.display_name ?? "…")}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -495,4 +621,10 @@ const styles = StyleSheet.create({
   scoreNameCol: { flex: 1.6, textAlign: "left" },
   scoreStatusCol: { flex: 1.4, alignItems: "center" },
   statusBadge: { fontSize: 12, fontWeight: "700", textAlign: "center" },
+  historyCard: { maxHeight: 500 },
+  onlineDot: { width: 8, height: 8, borderRadius: 4 },
+  onlineDotOn: { backgroundColor: "#6fcf97" },
+  onlineDotOff: { backgroundColor: "#5a5a5a" },
+  historyRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#ffffff11" },
+  historyText: { color: "#cfe3d8", fontSize: 13 },
 });

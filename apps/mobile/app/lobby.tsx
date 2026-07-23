@@ -55,6 +55,7 @@ export default function Lobby() {
         placeholder="Tu nombre en la mesa"
         value={displayName}
         onChangeText={setDisplayName}
+        accessibilityLabel="Tu nombre en la mesa"
       />
 
       <View style={styles.card}>
@@ -64,8 +65,16 @@ export default function Lobby() {
           placeholder="Nombre de la sala"
           value={roomName}
           onChangeText={setRoomName}
+          accessibilityLabel="Nombre de la sala"
         />
-        <Pressable style={styles.button} onPress={handleCreate} disabled={busy !== null}>
+        <Pressable
+          style={styles.button}
+          onPress={handleCreate}
+          disabled={busy !== null}
+          accessibilityRole="button"
+          accessibilityLabel="Crear sala"
+          accessibilityState={{ disabled: busy !== null, busy: busy === "create" }}
+        >
           {busy === "create" ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Crear</Text>}
         </Pressable>
       </View>
@@ -78,15 +87,27 @@ export default function Lobby() {
           autoCapitalize="characters"
           value={inviteCode}
           onChangeText={setInviteCode}
+          accessibilityLabel="Código de sala"
         />
-        <Pressable style={styles.button} onPress={handleJoin} disabled={busy !== null}>
+        <Pressable
+          style={styles.button}
+          onPress={handleJoin}
+          disabled={busy !== null}
+          accessibilityRole="button"
+          accessibilityLabel="Unirme a la sala"
+          accessibilityState={{ disabled: busy !== null, busy: busy === "join" }}
+        >
           {busy === "join" ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Unirme</Text>}
         </Pressable>
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <Text style={styles.error} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      ) : null}
 
-      <Pressable style={styles.signOut} onPress={() => supabase.auth.signOut()}>
+      <Pressable style={styles.signOut} onPress={() => supabase.auth.signOut()} accessibilityRole="button" accessibilityLabel="Cerrar sesión">
         <Text style={styles.signOutText}>Cerrar sesión</Text>
       </Pressable>
     </ScrollView>

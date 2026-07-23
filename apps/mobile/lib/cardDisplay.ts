@@ -32,3 +32,24 @@ export function cardLabel(card: Card): string {
   if (card.rank === "JOKER") return "JOKER";
   return `${card.rank}${suitSymbol(card.suit)}`;
 }
+
+const SUIT_NAME: Record<NonNullable<Card["suit"]>, string> = {
+  hearts: "corazones",
+  diamonds: "diamantes",
+  clubs: "tréboles",
+  spades: "picas",
+};
+
+const RANK_NAME: Record<string, string> = {
+  A: "As",
+  J: "Jota",
+  Q: "Reina",
+  K: "Rey",
+};
+
+/** Descripción hablada para lectores de pantalla, ej. "As de corazones". */
+export function cardAccessibilityLabel(card: Card): string {
+  if (card.rank === "JOKER") return "Comodín";
+  const rank = RANK_NAME[card.rank] ?? card.rank;
+  return `${rank} de ${card.suit ? SUIT_NAME[card.suit] : ""}`;
+}

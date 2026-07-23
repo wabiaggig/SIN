@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Card } from "../lib/types";
-import { isRedSuit, suitSymbol } from "../lib/cardDisplay";
+import { cardAccessibilityLabel, isRedSuit, suitSymbol } from "../lib/cardDisplay";
 
 export function PlayingCard({
   card,
@@ -24,6 +24,8 @@ export function PlayingCard({
         selected && styles.cardSelected,
         isJoker && styles.cardJoker,
       ]}
+      accessible
+      accessibilityLabel={cardAccessibilityLabel(card) + (selected ? ", seleccionada" : "")}
     >
       <Text style={[styles.rank, small && styles.rankSmall, { color: isJoker ? "#7b3fbf" : red ? "#c0392b" : "#1c1c1c" }]}>
         {isJoker ? "★" : card.rank}
@@ -37,7 +39,16 @@ export function PlayingCard({
   );
 
   if (!onPress) return content;
-  return <Pressable onPress={onPress}>{content}</Pressable>;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={cardAccessibilityLabel(card)}
+      accessibilityState={{ selected: !!selected }}
+    >
+      {content}
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({

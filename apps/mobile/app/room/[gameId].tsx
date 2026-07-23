@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { confirmEntry, startGame } from "../../lib/functions";
+import { usePresence } from "../../lib/usePresence";
 
 type PlayerRow = {
   id: string;
@@ -77,6 +78,7 @@ export default function Room() {
     }
   }, [game, gameId]);
 
+  const onlineUserIds = usePresence(gameId!, userId);
   const me = players.find((p) => p.user_id === userId);
   const isHost = room?.host_user_id === userId;
   const activeCount = players.filter((p) => p.status === "active").length;
@@ -130,10 +132,16 @@ export default function Room() {
       <View style={styles.playerList}>
         {players.map((p) => (
           <View key={p.id} style={styles.playerRow}>
-            <Text style={styles.playerName}>
-              {p.display_name}
-              {p.user_id === room.host_user_id ? " 👑" : ""}
-            </Text>
+            <View style={styles.playerNameRow}>
+              <View
+                style={[styles.onlineDot, onlineUserIds.has(p.user_id) ? styles.onlineDotOn : styles.onlineDotOff]}
+                accessibilityLabel={onlineUserIds.has(p.user_id) ? "conectado" : "sin conexión"}
+              />
+              <Text style={styles.playerName}>
+                {p.display_name}
+                {p.user_id === room.host_user_id ? " 👑" : ""}
+              </Text>
+            </View>
             <Text style={[styles.playerStatus, p.status === "active" ? styles.statusActive : styles.statusWaiting]}>
               {p.status === "active" ? "confirmado" : "esperando"}
             </Text>
@@ -142,7 +150,14 @@ export default function Room() {
       </View>
 
       {me?.status === "waiting" ? (
-        <Pressable style={styles.button} onPress={handleConfirm} disabled={busy}>
+        <Pressable
+          style={styles.button}
+          onPress={handleConfirm}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Confirmar entrada"
+          accessibilityState={{ disabled: busy, busy }}
+        >
           {busy ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Confirmar entrada</Text>}
         </Pressable>
       ) : null}
@@ -152,6 +167,9 @@ export default function Room() {
           style={[styles.button, activeCount < 3 && styles.buttonDisabled]}
           onPress={handleStart}
           disabled={busy || activeCount < 3}
+          accessibilityRole="button"
+          accessibilityLabel="Iniciar partida"
+          accessibilityState={{ disabled: busy || activeCount < 3, busy }}
         >
           {busy ? (
             <ActivityIndicator color="#0f2418" />
@@ -185,7 +203,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  playerNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   playerName: { color: "#fff", fontSize: 16 },
+  onlineDot: { width: 8, height: 8, borderRadius: 4 },
+  onlineDotOn: { backgroundColor: "#6fcf97" },
+  onlineDotOff: { backgroundColor: "#5a5a5a" },
   playerStatus: { fontSize: 13, fontWeight: "600" },
   statusActive: { color: "#6fcf97" },
   statusWaiting: { color: "#f2c94c" },
