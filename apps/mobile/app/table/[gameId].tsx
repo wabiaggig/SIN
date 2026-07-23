@@ -4,6 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { gameCommand } from "../../lib/functions";
 import { PlayingCard } from "../../components/PlayingCard";
+import { DraggableHand } from "../../components/DraggableHand";
 import { handPoints } from "../../lib/cardDisplay";
 import { hasSin, statusColor, statusLabel } from "../../lib/playerStatus";
 import type { Card, GameRow, PlayerRow, TableGroup } from "../../lib/types";
@@ -227,11 +228,15 @@ export default function Table() {
 
         <View style={styles.handSection}>
           <Text style={styles.sectionTitle}>Tu mano</Text>
-          <View style={styles.hand}>
-            {hand.map((card) => (
-              <PlayingCard key={card.id} card={card} selected={selected.has(card.id)} onPress={() => toggleCard(card.id)} />
-            ))}
-          </View>
+          <Text style={styles.hint}>Arrastrá una carta para ordenarla, o seleccioná una y usá ◀ Mover / Mover ▶</Text>
+          {me ? (
+            <DraggableHand
+              cards={hand}
+              selected={selected}
+              onToggle={toggleCard}
+              storageKey={`sin-hand-order-${gameId}-${me.id}`}
+            />
+          ) : null}
         </View>
       </ScrollView>
 
