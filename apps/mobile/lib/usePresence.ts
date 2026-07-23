@@ -3,9 +3,10 @@ import { supabase } from "./supabase";
 
 /**
  * Trackea qué user_id están conectados a un canal de presencia de
- * Supabase Realtime en este momento. No es reconexión completa (no hay
- * expulsión por timeout todavía, ver docs/README de supabase), pero es
- * la parte visible: saber quién está en línea ahora mismo.
+ * Supabase Realtime en este momento. Es la señal "en vivo" de conexión;
+ * la señal durable que sobrevive a reconexiones de socket es
+ * players.last_seen_at (ver useHeartbeat.ts) — el anfitrión usa esa
+ * última para decidir si expulsar a alguien (§56).
  */
 export function usePresence(channelKey: string, userId: string | null): Set<string> {
   const [online, setOnline] = useState<Set<string>>(new Set());

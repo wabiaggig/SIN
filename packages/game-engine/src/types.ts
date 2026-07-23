@@ -184,6 +184,14 @@ export type ConfirmResolutionCommand = { type: "CONFIRM_RESOLUTION"; playerId: s
 export type ReenterCommand = { type: "REENTER"; playerId: string };
 export type DeclareRoyalCommand = { type: "DECLARE_ROYAL"; playerId: string };
 export type SingScoreboardCommand = { type: "SING_SCOREBOARD"; playerId: string };
+/**
+ * Expulsión por desconexión (§56). No es una acción de un jugador sobre sí
+ * mismo como el resto de los comandos — la autoriza el anfitrión desde
+ * fuera del motor (comprobación de host + tiempo de desconexión viven en
+ * el Edge Function remove-player, no acá: el motor solo sabe aplicar el
+ * efecto una vez que ya se decidió expulsar).
+ */
+export type RemovePlayerCommand = { type: "REMOVE_PLAYER"; targetPlayerId: string };
 
 export type GameCommand =
   | DrawCardCommand
@@ -196,7 +204,8 @@ export type GameCommand =
   | ConfirmResolutionCommand
   | ReenterCommand
   | DeclareRoyalCommand
-  | SingScoreboardCommand;
+  | SingScoreboardCommand
+  | RemovePlayerCommand;
 
 export type CommandOutcome = {
   state: GameState;

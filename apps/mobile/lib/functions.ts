@@ -68,3 +68,7 @@ export function createNextGame(input: { roomId: string }) {
 export function gameCommand(input: { gameId: string; command: Record<string, unknown> }) {
   return invoke<{ ok: true; version: number; events: unknown[] }>("game-command", input);
 }
+
+export function removePlayer(input: { gameId: string; targetPlayerId: string }) {
+  return invoke<{ ok: true; version: number; events: unknown[] }>("remove-player", input);
+}

@@ -3,7 +3,9 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { usePresence } from "../../lib/usePresence";
-import { gameCommand, createNextGame, joinRoom, startNextRound } from "../../lib/functions";
+import { useHeartbeat } from "../../lib/useHeartbeat";
+import { isDisconnected, secondsSinceLastSeen, useNowTicker } from "../../lib/reconnection";
+import { gameCommand, createNextGame, joinRoom, startNextRound, removePlayer } from "../../lib/functions";
 import { PlayingCard } from "../../components/PlayingCard";
 import { DraggableHand } from "../../components/DraggableHand";
 import { handPoints } from "../../lib/cardDisplay";
@@ -55,14 +57,14 @@ export default function Table() {
 
     const { data: roomRow } = await supabase
       .from("rooms")
-      .select("id, host_user_id, invite_code, currency_symbol, initial_entry_amount, sin_bonus_amount_per_opponent, codillo_debtor_user_id")
+      .select("id, host_user_id, invite_code, currency_symbol, initial_entry_amount, sin_bonus_amount_per_opponent, codillo_debtor_user_id, reconnect_timeout_seconds")
       .eq("id", gameRow.room_id)
       .single();
     setRoom((roomRow as RoomRow) ?? null);
 
     const { data: playerRows } = await supabase
       .from("players")
-      .select("id, user_id, display_name, seat_index, status, accumulated_points, cross_state, has_ever_flown, hand_count")
+      .select("id, user_id, display_name, seat_index, status, accumulated_points, cross_state, has_ever_flown, hand_count, last_seen_at")
       .eq("game_id", gameId)
       .order("seat_index", { ascending: true });
     setPlayers((playerRows ?? []) as PlayerRow[]);
@@ -159,6 +161,8 @@ export default function Table() {
 
   const onlineUserIds = usePresence(gameId!, userId);
   const me = useMemo(() => players.find((p) => p.user_id === userId), [players, userId]);
+  useHeartbeat(me?.id ?? null);
+  const nowTick = useNowTicker();
   const isHost = !!room && room.host_user_id === userId;
   const isMyTurn = !!me && game?.active_player_id === me.id;
   const isPlaying = game?.phase === "playing";
@@ -200,6 +204,25 @@ export default function Table() {
     }
   }
 
+  function playerDisconnectedSeconds(player: PlayerRow) {
+    return secondsSinceLastSeen(player.last_seen_at, nowTick);
+  }
+  function isPlayerDisconnected(player: PlayerRow) {
+    return !!room && isDisconnected(player.last_seen_at, room.reconnect_timeout_seconds, nowTick);
+  }
+
+  async function kickPlayer(targetPlayerId: string) {
+    setError("");
+    setBusy(true);
+    try {
+      await removePlayer({ gameId: gameId!, targetPlayerId });
+    } catch (err) {
+      setError((err as { message?: string }).message ?? "No se pudo expulsar al jugador.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading || !game) {
     return (
       <View style={styles.center}>
@@ -233,9 +256,28 @@ export default function Table() {
       <View style={styles.center}>
         <Text style={styles.bigText}>Golpe resuelto</Text>
         {pending.length > 0 ? (
-          <Text style={styles.marginText}>
-            Esperando a que decida{pending.length > 1 ? "n" : ""}: {pending.map((p) => p.display_name).join(", ")}
-          </Text>
+          <>
+            <Text style={styles.marginText}>
+              Esperando a que decida{pending.length > 1 ? "n" : ""}: {pending.map((p) => p.display_name).join(", ")}
+            </Text>
+            {isHost
+              ? pending.filter(isPlayerDisconnected).map((p) => (
+                  <Pressable
+                    key={p.id}
+                    style={styles.kickButton}
+                    disabled={busy}
+                    onPress={() => kickPlayer(p.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Expulsar a ${p.display_name}`}
+                    accessibilityState={{ disabled: busy }}
+                  >
+                    <Text style={styles.kickButtonText}>
+                      Expulsar a {p.display_name} (desconectado hace {playerDisconnectedSeconds(p)}s)
+                    </Text>
+                  </Pressable>
+                ))
+              : null}
+          </>
         ) : isHost ? (
           <Pressable
             style={styles.centerButton}
@@ -369,6 +411,28 @@ export default function Table() {
             Acumulado {me?.accumulated_points ?? 0} · margen {margin} · mano {myHandPoints}
           </Text>
         </View>
+
+        {isHost && !isMyTurn ? (() => {
+          const activePlayerRow = players.find((p) => p.id === game.active_player_id);
+          if (!activePlayerRow || !isPlayerDisconnected(activePlayerRow)) return null;
+          return (
+            <View style={styles.disconnectBanner}>
+              <Text style={styles.disconnectText}>
+                {activePlayerRow.display_name} está desconectado hace {playerDisconnectedSeconds(activePlayerRow)}s
+              </Text>
+              <Pressable
+                style={styles.kickButton}
+                disabled={busy}
+                onPress={() => kickPlayer(activePlayerRow.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Expulsar a ${activePlayerRow.display_name}`}
+                accessibilityState={{ disabled: busy }}
+              >
+                <Text style={styles.kickButtonText}>Expulsar</Text>
+              </Pressable>
+            </View>
+          );
+        })() : null}
 
         <View style={styles.pilesRow}>
           <Pressable
@@ -627,4 +691,17 @@ const styles = StyleSheet.create({
   onlineDotOff: { backgroundColor: "#5a5a5a" },
   historyRow: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#ffffff11" },
   historyText: { color: "#cfe3d8", fontSize: 13 },
+  disconnectBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#4a2a1a",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  disconnectText: { color: "#f2c94c", fontSize: 13, flex: 1 },
+  kickButton: { backgroundColor: "#e0573f", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  kickButtonText: { color: "#fff", fontWeight: "700", fontSize: 12, textAlign: "center" },
 });

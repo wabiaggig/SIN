@@ -35,6 +35,7 @@ export type PlayerRow = {
   cross_state: "available" | "used" | "lost_by_flying";
   has_ever_flown: boolean;
   hand_count: number;
+  last_seen_at: string;
 };
 
 export type GameRow = {
@@ -65,4 +66,5 @@ export type RoomRow = {
   initial_entry_amount: number;
   sin_bonus_amount_per_opponent: number;
   codillo_debtor_user_id: string | null;
+  reconnect_timeout_seconds: number;
 };

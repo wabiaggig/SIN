@@ -348,3 +348,134 @@ describe("SING_SCOREBOARD", () => {
     expect(result.value.events).toEqual([{ type: "SCOREBOARD_SUNG", playerId: "p1" }]);
   });
 });
+
+describe("REMOVE_PLAYER (§56, expulsión por desconexión)", () => {
+  it("durante playing: si es el jugador activo, lo elimina y avanza el turno", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2" });
+    const p3 = makePlayer({ playerId: "p3" });
+    const state = makeState({ players: [p1, p2, p3], activePlayerId: "p1", currentTurnHasDrawn: true });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p1" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.activePlayerId).toBe("p2");
+    expect(result.value.state.currentTurnHasDrawn).toBe(false);
+    expect(result.value.state.players.find((p) => p.playerId === "p1")?.status).toBe("eliminated");
+    expect(result.value.events).toEqual([{ type: "PLAYER_ELIMINATED", playerId: "p1" }]);
+  });
+
+  it("durante playing: si es un jugador no activo en este turno, solo lo elimina", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2" });
+    const p3 = makePlayer({ playerId: "p3" });
+    const state = makeState({ players: [p1, p2, p3], activePlayerId: "p1" });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p3" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.activePlayerId).toBe("p1");
+    expect(result.value.state.players.find((p) => p.playerId === "p3")?.status).toBe("eliminated");
+  });
+
+  it("durante playing: si solo queda un jugador activo, termina la partida", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2", status: "eliminated" });
+    const p3 = makePlayer({ playerId: "p3" });
+    const state = makeState({ players: [p1, p2, p3], activePlayerId: "p3" });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p3" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.phase).toBe("finished");
+    expect(result.value.state.winnerPlayerId).toBe("p1");
+    expect(result.value.state.winType).toBe("normal");
+    expect(result.value.events.map((e) => e.type)).toEqual(["PLAYER_ELIMINATED", "GAME_FINISHED"]);
+  });
+
+  it("rechaza expulsar a un jugador que ya no está activo", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2", status: "eliminated" });
+    const state = makeState({ players: [p1, p2] });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p2" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("durante resolving_knock: solo puede expulsar a quien está resolviendo ahora mismo, y avanza la resolución", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2" });
+    const p3 = makePlayer({ playerId: "p3" });
+    const state = makeState({
+      players: [p1, p2, p3],
+      phase: "resolving_knock",
+      knockerPlayerId: "p3",
+      resolutionOrder: ["p1", "p2", "p3"],
+      resolutionIndex: 0,
+      activePlayerId: "p1",
+    });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p1" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.activePlayerId).toBe("p2");
+    expect(result.value.state.resolutionIndex).toBe(1);
+    expect(result.value.state.players.find((p) => p.playerId === "p1")?.status).toBe("eliminated");
+  });
+
+  it("durante resolving_knock: rechaza expulsar a quien golpeó", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2" });
+    const state = makeState({
+      players: [p1, p2],
+      phase: "resolving_knock",
+      knockerPlayerId: "p2",
+      resolutionOrder: ["p1", "p2"],
+      resolutionIndex: 1,
+      activePlayerId: "p2",
+    });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p2" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("durante resolving_knock: rechaza expulsar a quien no está resolviendo en este momento", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2" });
+    const p3 = makePlayer({ playerId: "p3" });
+    const state = makeState({
+      players: [p1, p2, p3],
+      phase: "resolving_knock",
+      knockerPlayerId: "p3",
+      resolutionOrder: ["p1", "p2", "p3"],
+      resolutionIndex: 0,
+      activePlayerId: "p1",
+    });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p2" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("durante waiting_for_reentry_decisions: elimina a quien tiene una decisión pendiente", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const p2 = makePlayer({ playerId: "p2", status: "flown_pending_reentry" });
+    const state = makeState({
+      players: [p1, p2],
+      phase: "waiting_for_reentry_decisions",
+      activePlayerId: null,
+    });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p2" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state.players.find((p) => p.playerId === "p2")?.status).toBe("eliminated");
+  });
+
+  it("rechaza expulsar en fases donde nadie puede estar bloqueado (lobby)", () => {
+    const p1 = makePlayer({ playerId: "p1" });
+    const state = makeState({ players: [p1], phase: "lobby" });
+
+    const result = processCommand(state, { type: "REMOVE_PLAYER", targetPlayerId: "p1" });
+    expect(result.ok).toBe(false);
+  });
+});

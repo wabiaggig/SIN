@@ -593,6 +593,103 @@ function handleSingScoreboard(state: GameState, playerId: string): Result<Comman
   return ok({ state, events: [{ type: "SCOREBOARD_SUNG", playerId }] });
 }
 
+/**
+ * Expulsión por desconexión (§56). El motor no valida quién puede pedir
+ * esto (eso es autoridad del anfitrión + tiempo de desconexión, resuelto
+ * en el Edge Function) — solo aplica el efecto sobre el estado de forma
+ * segura una vez decidido. Alcance deliberadamente acotado a los casos
+ * donde un jugador desconectado realmente bloquea la partida: su propio
+ * turno normal, su propia resolución tras un golpe, o su propia decisión
+ * de reingreso pendiente. Expulsar a alguien que ya resolvió esta ronda
+ * no está soportado (finishResolution recalcularía su estado a partir de
+ * roundResults y pisaría la expulsión).
+ */
+function handleRemovePlayer(state: GameState, targetPlayerId: string): Result<CommandOutcome> {
+  const target = findPlayer(state, targetPlayerId);
+  if (!target) return err("PLAYER_NOT_FOUND", "Jugador no encontrado.");
+
+  if (state.phase === "playing") {
+    if (target.status !== "active") {
+      return err("CANNOT_REMOVE_PLAYER", "El jugador no está activo en la ronda.");
+    }
+
+    let nextState = updatePlayer(state, targetPlayerId, (p) => ({ ...p, status: "eliminated" as const }));
+    const events: GameEvent[] = [{ type: "PLAYER_ELIMINATED", playerId: targetPlayerId }];
+
+    const stillActive = nextState.players.filter((p) => p.status === "active");
+    if (stillActive.length === 1) {
+      const winner = stillActive[0]!;
+      nextState = {
+        ...nextState,
+        players: nextState.players.map((p) =>
+          p.playerId === winner.playerId ? { ...p, status: "winner" as const } : p,
+        ),
+        phase: "finished",
+        activePlayerId: null,
+        winnerPlayerId: winner.playerId,
+        winType: "normal",
+      };
+      events.push({ type: "GAME_FINISHED", winnerPlayerId: winner.playerId });
+      return ok({ state: nextState, events });
+    }
+
+    if (state.activePlayerId === targetPlayerId) {
+      const next = getNextActivePlayer(targetPlayerId, nextState.players);
+      nextState = {
+        ...nextState,
+        activePlayerId: next.playerId,
+        currentTurnHasDrawn: false,
+        currentTurnHasTakenDiscard: false,
+      };
+    }
+
+    return ok({ state: nextState, events });
+  }
+
+  if (state.phase === "resolving_knock") {
+    if (target.status !== "active") {
+      return err("CANNOT_REMOVE_PLAYER", "El jugador no está participando de la resolución.");
+    }
+    if (targetPlayerId === state.knockerPlayerId) {
+      return err("CANNOT_REMOVE_KNOCKER", "No se puede expulsar a quien golpeó mientras se resuelve el golpe.");
+    }
+    if (state.activePlayerId !== targetPlayerId) {
+      return err(
+        "CAN_ONLY_REMOVE_ACTIVE_RESOLVER",
+        "Solo se puede expulsar a quien está resolviendo en este momento.",
+      );
+    }
+
+    const nextState = updatePlayer(state, targetPlayerId, (p) => ({ ...p, status: "eliminated" as const }));
+    const events: GameEvent[] = [{ type: "PLAYER_ELIMINATED", playerId: targetPlayerId }];
+    const nextIndex = nextState.resolutionIndex + 1;
+
+    if (nextIndex < nextState.resolutionOrder.length) {
+      return ok({
+        state: {
+          ...nextState,
+          resolutionIndex: nextIndex,
+          activePlayerId: nextState.resolutionOrder[nextIndex]!,
+        },
+        events,
+      });
+    }
+
+    const finished = finishResolution(nextState);
+    return ok({ state: finished.state, events: [...events, ...finished.events] });
+  }
+
+  if (state.phase === "waiting_for_reentry_decisions") {
+    if (target.status !== "flown_pending_reentry") {
+      return err("CANNOT_REMOVE_PLAYER", "El jugador no tiene una decisión de reingreso pendiente.");
+    }
+    const nextState = updatePlayer(state, targetPlayerId, (p) => ({ ...p, status: "eliminated" as const }));
+    return ok({ state: nextState, events: [{ type: "PLAYER_ELIMINATED", playerId: targetPlayerId }] });
+  }
+
+  return err("INVALID_PHASE", "No se puede expulsar jugadores en esta fase de la partida.");
+}
+
 export function processCommand(state: GameState, command: GameCommand): Result<CommandOutcome> {
   switch (command.type) {
     case "DRAW_CARD":
@@ -617,6 +714,8 @@ export function processCommand(state: GameState, command: GameCommand): Result<C
       return handleReenter(state, command.playerId);
     case "SING_SCOREBOARD":
       return handleSingScoreboard(state, command.playerId);
+    case "REMOVE_PLAYER":
+      return handleRemovePlayer(state, command.targetPlayerId);
     default: {
       const exhaustive: never = command;
       return exhaustive;
