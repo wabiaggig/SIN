@@ -53,4 +53,16 @@ export type GameRow = {
   round_number: number;
   resolution_order: string[];
   resolution_index: number;
+  winner_player_id: string | null;
+  win_type: "normal" | "sin" | "royal" | "royal_with_sin" | null;
+};
+
+export type RoomRow = {
+  id: string;
+  host_user_id: string;
+  invite_code: string;
+  currency_symbol: string;
+  initial_entry_amount: number;
+  sin_bonus_amount_per_opponent: number;
+  codillo_debtor_user_id: string | null;
 };

@@ -29,8 +29,16 @@ export default function Room() {
     const { data: userData } = await supabase.auth.getUser();
     setUserId(userData.user?.id ?? null);
 
-    const { data: gameRow } = await supabase.from("games").select("id, room_id, phase").eq("id", gameId).single();
-    if (!gameRow) return;
+    const { data: gameRow, error: gameError } = await supabase
+      .from("games")
+      .select("id, room_id, phase")
+      .eq("id", gameId)
+      .single();
+    if (!gameRow) {
+      setError(gameError?.message ?? "No se pudo cargar la partida (¿ya te uniste?).");
+      setLoading(false);
+      return;
+    }
     setGame(gameRow);
 
     const { data: roomRow } = await supabase
@@ -95,6 +103,14 @@ export default function Room() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!loading && error && !game) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>{error}</Text>
+      </View>
+    );
   }
 
   if (loading || !game || !room) {

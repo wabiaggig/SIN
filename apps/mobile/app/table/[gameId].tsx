@@ -1,19 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
-import { gameCommand } from "../../lib/functions";
+import { gameCommand, createNextGame, joinRoom, startNextRound } from "../../lib/functions";
 import { PlayingCard } from "../../components/PlayingCard";
 import { DraggableHand } from "../../components/DraggableHand";
 import { handPoints } from "../../lib/cardDisplay";
 import { hasSin, statusColor, statusLabel } from "../../lib/playerStatus";
-import type { Card, GameRow, PlayerRow, TableGroup } from "../../lib/types";
+import type { Card, GameRow, PlayerRow, RoomRow, TableGroup } from "../../lib/types";
+
+const WIN_TYPE_LABEL: Record<string, string> = {
+  normal: "Normal",
+  sin: "¡Con SIN! 🎉",
+  royal: "¡Royal! 👑",
+  royal_with_sin: "¡Royal con SIN! 👑🎉",
+};
 
 const MAX_SCORE = 69;
 
 export default function Table() {
   const { gameId } = useLocalSearchParams<{ gameId: string }>();
   const [game, setGame] = useState<GameRow | null>(null);
+  const [room, setRoom] = useState<RoomRow | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [hand, setHand] = useState<Card[]>([]);
   const [tableGroups, setTableGroups] = useState<TableGroup[]>([]);
@@ -32,12 +40,19 @@ export default function Table() {
     const { data: gameRow } = await supabase
       .from("games")
       .select(
-        "id, room_id, phase, active_player_id, dealer_player_id, knocker_player_id, current_turn_has_drawn, current_turn_has_taken_discard, awaiting_dealer_opening_discard, draw_pile_count, discard_top_card, pot_amount, round_number, resolution_order, resolution_index",
+        "id, room_id, phase, active_player_id, dealer_player_id, knocker_player_id, current_turn_has_drawn, current_turn_has_taken_discard, awaiting_dealer_opening_discard, draw_pile_count, discard_top_card, pot_amount, round_number, resolution_order, resolution_index, winner_player_id, win_type",
       )
       .eq("id", gameId)
       .single();
     if (!gameRow) return;
     setGame(gameRow as GameRow);
+
+    const { data: roomRow } = await supabase
+      .from("rooms")
+      .select("id, host_user_id, invite_code, currency_symbol, initial_entry_amount, sin_bonus_amount_per_opponent, codillo_debtor_user_id")
+      .eq("id", gameRow.room_id)
+      .single();
+    setRoom((roomRow as RoomRow) ?? null);
 
     const { data: playerRows } = await supabase
       .from("players")
@@ -89,7 +104,30 @@ export default function Table() {
     };
   }, [gameId, load]);
 
+  // Cuando el anfitrión crea una partida nueva en la misma sala (tras
+  // "finished"), el resto de los jugadores la detecta acá y se redirige solo.
+  useEffect(() => {
+    if (!room) return;
+    const channel = supabase
+      .channel(`room-watch-${room.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "games", filter: `room_id=eq.${room.id}` },
+        (payload: any) => {
+          const newId = payload.new?.id;
+          if (newId && newId !== gameId) {
+            router.replace(`/room/${newId}`);
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [room, gameId]);
+
   const me = useMemo(() => players.find((p) => p.user_id === userId), [players, userId]);
+  const isHost = !!room && room.host_user_id === userId;
   const isMyTurn = !!me && game?.active_player_id === me.id;
   const isPlaying = game?.phase === "playing";
   const isResolving = game?.phase === "resolving_knock";
@@ -142,7 +180,7 @@ export default function Table() {
     return (
       <View style={styles.center}>
         <Text style={styles.bigText}>Volaste 🪽</Text>
-        <Pressable style={styles.actionButton} disabled={busy} onPress={() => run({ type: "REENTER" })}>
+        <Pressable style={styles.centerButton} disabled={busy} onPress={() => run({ type: "REENTER" })}>
           <Text style={styles.actionText}>Reingresar</Text>
         </Pressable>
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -150,10 +188,107 @@ export default function Table() {
     );
   }
 
-  if (game.phase === "finished") {
+  if (game.phase === "waiting_for_reentry_decisions") {
+    const pending = players.filter((p) => p.status === "flown_pending_reentry");
     return (
       <View style={styles.center}>
-        <Text style={styles.bigText}>Partida terminada 🏆</Text>
+        <Text style={styles.bigText}>Golpe resuelto</Text>
+        {pending.length > 0 ? (
+          <Text style={styles.marginText}>
+            Esperando a que decida{pending.length > 1 ? "n" : ""}: {pending.map((p) => p.display_name).join(", ")}
+          </Text>
+        ) : isHost ? (
+          <Pressable
+            style={styles.centerButton}
+            disabled={busy}
+            onPress={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                await startNextRound({ gameId: gameId! });
+              } catch (err) {
+                setError((err as { message?: string }).message ?? "No se pudo repartir la siguiente ronda.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Text style={styles.actionText}>Repartir siguiente ronda</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.marginText}>Esperando a que el anfitrión reparta la siguiente ronda…</Text>
+        )}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </View>
+    );
+  }
+
+  if (game.phase === "finished") {
+    const winner = players.find((p) => p.id === game.winner_player_id);
+    const opponents = players.filter((p) => p.id !== game.winner_player_id);
+    const isSinWin = game.win_type === "sin" || game.win_type === "royal_with_sin";
+    const sinBonusTotal = isSinWin && room ? room.sin_bonus_amount_per_opponent * opponents.length : 0;
+    const totalPrize = game.pot_amount + sinBonusTotal;
+    const debtor = room?.codillo_debtor_user_id ? players.find((p) => p.user_id === room.codillo_debtor_user_id) : null;
+
+    return (
+      <View style={styles.center}>
+        <Text style={styles.bigText}>🏆 Ganó {winner?.display_name ?? "…"}</Text>
+        <Text style={styles.marginText}>{WIN_TYPE_LABEL[game.win_type ?? "normal"]}</Text>
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Pozo</Text>
+            <Text style={styles.summaryValue}>
+              {room?.currency_symbol} {game.pot_amount}
+            </Text>
+          </View>
+          {isSinWin ? (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Bono SIN ({opponents.length} rival{opponents.length !== 1 ? "es" : ""})</Text>
+              <Text style={styles.summaryValue}>
+                {room?.currency_symbol} {sinBonusTotal}
+              </Text>
+            </View>
+          ) : null}
+          <View style={[styles.summaryRow, styles.summaryTotalRow]}>
+            <Text style={styles.summaryLabel}>Total para {winner?.display_name}</Text>
+            <Text style={styles.summaryValue}>
+              {room?.currency_symbol} {totalPrize}
+            </Text>
+          </View>
+        </View>
+        {debtor ? (
+          <Text style={styles.hint}>
+            {debtor.display_name} quedó afuera por codillo — paga las entradas de la próxima partida.
+          </Text>
+        ) : null}
+        {isHost ? (
+          <Pressable
+            style={styles.centerButton}
+            disabled={busy}
+            onPress={async () => {
+              if (!room) return;
+              setBusy(true);
+              setError("");
+              try {
+                const next = await createNextGame({ roomId: room.id });
+                // El anfitrión tampoco tiene asiento automático en la partida
+                // nueva (igual que en create-room) — se une antes de navegar.
+                await joinRoom({ inviteCode: room.invite_code, displayName: me?.display_name ?? "Anfitrión" });
+                router.replace(`/room/${next.gameId}`);
+              } catch (err) {
+                setError((err as { message?: string }).message ?? "No se pudo crear la siguiente partida.");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Text style={styles.actionText}>Jugar de nuevo</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.marginText}>Esperando a que el anfitrión inicie una nueva partida…</Text>
+        )}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     );
   }
@@ -340,10 +475,16 @@ const styles = StyleSheet.create({
   actionBar: { flexDirection: "row", gap: 8, padding: 12, backgroundColor: "#0a1a12" },
   resolutionBar: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingBottom: 12, backgroundColor: "#0a1a12" },
   actionButton: { flex: 1, backgroundColor: "#f5c542", borderRadius: 10, paddingVertical: 12, alignItems: "center" },
+  centerButton: { backgroundColor: "#f5c542", borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28, alignItems: "center" },
   knockButton: { backgroundColor: "#e07a3f" },
   disabled: { opacity: 0.35 },
   actionText: { color: "#0f2418", fontWeight: "700" },
   error: { color: "#ff6b6b", textAlign: "center", paddingBottom: 8 },
+  summaryCard: { backgroundColor: "#183a29", borderRadius: 14, padding: 16, gap: 8, minWidth: 280 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between" },
+  summaryTotalRow: { borderTopWidth: 1, borderTopColor: "#ffffff22", paddingTop: 8, marginTop: 4 },
+  summaryLabel: { color: "#cfe3d8" },
+  summaryValue: { color: "#f5c542", fontWeight: "700" },
   modalBackdrop: { flex: 1, backgroundColor: "#00000099", alignItems: "center", justifyContent: "center" },
   modalCard: { backgroundColor: "#183a29", borderRadius: 16, padding: 20, minWidth: 320, gap: 6 },
   scoreHeaderRow: { flexDirection: "row", gap: 4, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: "#ffffff22", paddingBottom: 6 },
