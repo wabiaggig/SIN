@@ -1,0 +1,175 @@
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { supabase } from "../../lib/supabase";
+import { confirmEntry, startGame } from "../../lib/functions";
+
+type PlayerRow = {
+  id: string;
+  user_id: string;
+  display_name: string;
+  seat_index: number;
+  status: string;
+};
+
+type GameRow = { id: string; room_id: string; phase: string };
+type RoomRow = { id: string; invite_code: string; host_user_id: string; max_players: number };
+
+export default function Room() {
+  const { gameId } = useLocalSearchParams<{ gameId: string }>();
+  const [game, setGame] = useState<GameRow | null>(null);
+  const [room, setRoom] = useState<RoomRow | null>(null);
+  const [players, setPlayers] = useState<PlayerRow[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadAll = useCallback(async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    setUserId(userData.user?.id ?? null);
+
+    const { data: gameRow } = await supabase.from("games").select("id, room_id, phase").eq("id", gameId).single();
+    if (!gameRow) return;
+    setGame(gameRow);
+
+    const { data: roomRow } = await supabase
+      .from("rooms")
+      .select("id, invite_code, host_user_id, max_players")
+      .eq("id", gameRow.room_id)
+      .single();
+    setRoom(roomRow);
+
+    const { data: playerRows } = await supabase
+      .from("players")
+      .select("id, user_id, display_name, seat_index, status")
+      .eq("game_id", gameId)
+      .order("seat_index", { ascending: true });
+    setPlayers(playerRows ?? []);
+    setLoading(false);
+  }, [gameId]);
+
+  useEffect(() => {
+    loadAll();
+
+    const channel = supabase
+      .channel(`room-${gameId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `game_id=eq.${gameId}` }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "games", filter: `id=eq.${gameId}` }, loadAll)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [gameId, loadAll]);
+
+  const me = players.find((p) => p.user_id === userId);
+  const isHost = room?.host_user_id === userId;
+  const activeCount = players.filter((p) => p.status === "active").length;
+
+  async function handleConfirm() {
+    setError("");
+    setBusy(true);
+    try {
+      await confirmEntry({ gameId: gameId! });
+    } catch (err) {
+      setError((err as { message?: string }).message ?? "No se pudo confirmar la entrada.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleStart() {
+    setError("");
+    setBusy(true);
+    try {
+      await startGame({ gameId: gameId! });
+    } catch (err) {
+      setError((err as { message?: string }).message ?? "No se pudo iniciar la partida.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading || !game || !room) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color="#f5c542" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.code}>{room.invite_code}</Text>
+      <Text style={styles.hint}>Compartí este código para que se unan</Text>
+      <Text style={styles.phase}>Estado: {game.phase}</Text>
+
+      <View style={styles.playerList}>
+        {players.map((p) => (
+          <View key={p.id} style={styles.playerRow}>
+            <Text style={styles.playerName}>
+              {p.display_name}
+              {p.user_id === room.host_user_id ? " 👑" : ""}
+            </Text>
+            <Text style={[styles.playerStatus, p.status === "active" ? styles.statusActive : styles.statusWaiting]}>
+              {p.status === "active" ? "confirmado" : "esperando"}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {me?.status === "waiting" ? (
+        <Pressable style={styles.button} onPress={handleConfirm} disabled={busy}>
+          {busy ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Confirmar entrada</Text>}
+        </Pressable>
+      ) : null}
+
+      {isHost && (game.phase === "lobby" || game.phase === "waiting_for_entries") ? (
+        <Pressable
+          style={[styles.button, activeCount < 3 && styles.buttonDisabled]}
+          onPress={handleStart}
+          disabled={busy || activeCount < 3}
+        >
+          {busy ? (
+            <ActivityIndicator color="#0f2418" />
+          ) : (
+            <Text style={styles.buttonText}>
+              Iniciar partida {activeCount < 3 ? `(faltan ${3 - activeCount})` : ""}
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
+
+      {game.phase === "playing" ? <Text style={styles.playing}>¡La partida arrancó! 🎉</Text> : null}
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 24, backgroundColor: "#0f2418", gap: 12 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0f2418" },
+  code: { fontSize: 40, fontWeight: "800", color: "#f5c542", textAlign: "center", letterSpacing: 4 },
+  hint: { color: "#cfe3d8", textAlign: "center", marginBottom: 8 },
+  phase: { color: "#8fb09e", textAlign: "center", marginBottom: 16 },
+  playerList: { gap: 8, marginBottom: 16 },
+  playerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: "#183a29",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  playerName: { color: "#fff", fontSize: 16 },
+  playerStatus: { fontSize: 13, fontWeight: "600" },
+  statusActive: { color: "#6fcf97" },
+  statusWaiting: { color: "#f2c94c" },
+  button: { backgroundColor: "#f5c542", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  buttonDisabled: { opacity: 0.5 },
+  buttonText: { color: "#0f2418", fontWeight: "700", fontSize: 16 },
+  playing: { color: "#6fcf97", textAlign: "center", fontSize: 18, marginTop: 16 },
+  error: { color: "#ff6b6b", textAlign: "center" },
+});
