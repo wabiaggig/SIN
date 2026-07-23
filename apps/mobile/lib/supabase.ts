@@ -1,4 +1,5 @@
 import "react-native-url-polyfill/auto";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 
@@ -14,6 +15,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // En web, el enlace mágico vuelve como http://localhost:8081/#access_token=...
+    // y supabase-js lo detecta solo en el arranque. En nativo no hay barra de
+    // direcciones — el deep link "sin://" se maneja a mano en lib/authLinking.ts.
+    detectSessionInUrl: Platform.OS === "web",
   },
 });
