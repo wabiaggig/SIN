@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { gameCommand } from "../../lib/functions";
 import { PlayingCard } from "../../components/PlayingCard";
 import { handPoints } from "../../lib/cardDisplay";
+import { hasSin, statusColor, statusLabel } from "../../lib/playerStatus";
 import type { Card, GameRow, PlayerRow, TableGroup } from "../../lib/types";
 
 const MAX_SCORE = 69;
@@ -280,17 +281,29 @@ export default function Table() {
 
       <Modal visible={scoreboardOpen} transparent animationType="fade" onRequestClose={() => setScoreboardOpen(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setScoreboardOpen(false)}>
-          <View style={styles.modalCard}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.sectionTitle}>Tabla</Text>
+            <View style={styles.scoreHeaderRow}>
+              <Text style={[styles.scoreHeaderCell, styles.scoreNameCol]}>Jugador</Text>
+              <Text style={styles.scoreHeaderCell}>Puntaje</Text>
+              <Text style={styles.scoreHeaderCell}>Margen</Text>
+              <Text style={styles.scoreHeaderCell}>SIN</Text>
+              <Text style={[styles.scoreHeaderCell, styles.scoreStatusCol]}>Estado</Text>
+            </View>
             {players.map((p) => (
               <View key={p.id} style={styles.scoreRow}>
-                <Text style={styles.scoreName}>{p.display_name}</Text>
-                <Text style={styles.scoreValue}>
-                  {p.accumulated_points} ({MAX_SCORE - p.accumulated_points}) {p.cross_state === "used" ? "X" : ""}
+                <Text style={[styles.scoreName, styles.scoreNameCol]} numberOfLines={1}>
+                  {p.display_name}
                 </Text>
+                <Text style={styles.scoreCell}>{p.accumulated_points}</Text>
+                <Text style={styles.scoreCell}>{Math.max(0, MAX_SCORE - p.accumulated_points)}</Text>
+                <Text style={styles.scoreCell}>{hasSin(p) ? "Sí" : "—"}</Text>
+                <View style={styles.scoreStatusCol}>
+                  <Text style={[styles.statusBadge, { color: statusColor(p.status) }]}>{statusLabel(p.status)}</Text>
+                </View>
               </View>
             ))}
-          </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </View>
@@ -327,8 +340,13 @@ const styles = StyleSheet.create({
   actionText: { color: "#0f2418", fontWeight: "700" },
   error: { color: "#ff6b6b", textAlign: "center", paddingBottom: 8 },
   modalBackdrop: { flex: 1, backgroundColor: "#00000099", alignItems: "center", justifyContent: "center" },
-  modalCard: { backgroundColor: "#183a29", borderRadius: 16, padding: 20, minWidth: 260, gap: 10 },
-  scoreRow: { flexDirection: "row", justifyContent: "space-between" },
-  scoreName: { color: "#fff" },
-  scoreValue: { color: "#cfe3d8" },
+  modalCard: { backgroundColor: "#183a29", borderRadius: 16, padding: 20, minWidth: 320, gap: 6 },
+  scoreHeaderRow: { flexDirection: "row", gap: 4, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: "#ffffff22", paddingBottom: 6 },
+  scoreHeaderCell: { flex: 1, color: "#8fb09e", fontSize: 11, fontWeight: "700", textTransform: "uppercase", textAlign: "center" },
+  scoreRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6 },
+  scoreName: { color: "#fff", fontWeight: "600" },
+  scoreCell: { flex: 1, color: "#cfe3d8", textAlign: "center" },
+  scoreNameCol: { flex: 1.6, textAlign: "left" },
+  scoreStatusCol: { flex: 1.4, alignItems: "center" },
+  statusBadge: { fontSize: 12, fontWeight: "700", textAlign: "center" },
 });
