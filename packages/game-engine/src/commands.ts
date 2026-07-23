@@ -169,7 +169,7 @@ function handleTakeDiscard(
   }
 
   const newGroup: TableGroup = {
-    id: `group-${state.tableGroups.length}-${Date.now()}`,
+    id: crypto.randomUUID(),
     type: validateSameRankGroup(proposedGroup).valid ? "same_rank" : "straight",
     cards: proposedGroup.map((card) => ({ card, ownerPlayerId: playerId })),
     createdByPlayerId: playerId,
@@ -222,7 +222,7 @@ function handleLayDownGroup(state: GameState, playerId: string, cardIds: string[
   }
 
   const newGroup: TableGroup = {
-    id: `group-${state.tableGroups.length}-${Date.now()}`,
+    id: crypto.randomUUID(),
     type: validateSameRankGroup(cards).valid ? "same_rank" : "straight",
     cards: cards.map((card) => ({ card, ownerPlayerId: playerId })),
     createdByPlayerId: playerId,
