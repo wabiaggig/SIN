@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { confirmEntry, startGame } from "../../lib/functions";
 
@@ -62,6 +62,12 @@ export default function Room() {
       supabase.removeChannel(channel);
     };
   }, [gameId, loadAll]);
+
+  useEffect(() => {
+    if (game && game.phase !== "lobby" && game.phase !== "waiting_for_entries") {
+      router.replace(`/table/${gameId}`);
+    }
+  }, [game, gameId]);
 
   const me = players.find((p) => p.user_id === userId);
   const isHost = room?.host_user_id === userId;
