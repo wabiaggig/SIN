@@ -5,10 +5,21 @@ import { createRoom, joinRoom } from "../lib/functions";
 import { supabase } from "../lib/supabase";
 import { PressableScale } from "../components/PressableScale";
 
+/** Convierte texto de un campo de precio a número; vacío/inválido cae al default del backend. */
+function parseAmount(text: string, fallback: number): number {
+  const normalized = text.trim().replace(",", ".");
+  if (!normalized) return fallback;
+  const value = Number(normalized);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 export default function Lobby() {
   const [displayName, setDisplayName] = useState("");
   const [roomName, setRoomName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [entryAmount, setEntryAmount] = useState("1");
+  const [reentryWithSin, setReentryWithSin] = useState("1");
+  const [reentryWithoutSin, setReentryWithoutSin] = useState("0.5");
   const [busy, setBusy] = useState<"create" | "join" | null>(null);
   const [error, setError] = useState("");
 
@@ -20,7 +31,13 @@ export default function Lobby() {
     setError("");
     setBusy("create");
     try {
-      const room = await createRoom({ name: roomName.trim(), maxPlayers: 8 });
+      const room = await createRoom({
+        name: roomName.trim(),
+        maxPlayers: 8,
+        initialEntryAmount: parseAmount(entryAmount, 1),
+        reentryWithSinAmount: parseAmount(reentryWithSin, 1),
+        reentryWithoutSinAmount: parseAmount(reentryWithoutSin, 0.5),
+      });
       await joinRoom({ inviteCode: room.inviteCode, displayName: displayName.trim() });
       router.push(`/room/${room.gameId}`);
     } catch (err) {
@@ -68,6 +85,41 @@ export default function Lobby() {
           onChangeText={setRoomName}
           accessibilityLabel="Nombre de la sala"
         />
+        <View style={styles.priceRow}>
+          <View style={styles.priceField}>
+            <Text style={styles.priceLabel}>Entrada</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="1"
+              keyboardType="decimal-pad"
+              value={entryAmount}
+              onChangeText={setEntryAmount}
+              accessibilityLabel="Precio de entrada"
+            />
+          </View>
+          <View style={styles.priceField}>
+            <Text style={styles.priceLabel}>Reingreso con SIN</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="1"
+              keyboardType="decimal-pad"
+              value={reentryWithSin}
+              onChangeText={setReentryWithSin}
+              accessibilityLabel="Precio de reingreso con SIN"
+            />
+          </View>
+          <View style={styles.priceField}>
+            <Text style={styles.priceLabel}>Reingreso sin SIN</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0.5"
+              keyboardType="decimal-pad"
+              value={reentryWithoutSin}
+              onChangeText={setReentryWithoutSin}
+              accessibilityLabel="Precio de reingreso sin SIN"
+            />
+          </View>
+        </View>
         <PressableScale
           style={styles.button}
           onPress={handleCreate}
@@ -138,6 +190,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
   },
+  priceRow: { flexDirection: "row", gap: 8 },
+  priceField: { flex: 1, gap: 4 },
+  priceLabel: { color: "#8fb09e", fontSize: 11, fontWeight: "600" },
   button: {
     backgroundColor: "#f5c542",
     borderRadius: 12,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, StyleSheet, Text, TextInput, View } from "react-native";
+import { router } from "expo-router";
 import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 import { PressableScale } from "../components/PressableScale";
@@ -8,6 +9,8 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [guestError, setGuestError] = useState("");
 
   const fade = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(16)).current;
@@ -32,6 +35,18 @@ export default function Login() {
       return;
     }
     setStatus("sent");
+  }
+
+  async function playAsGuest() {
+    setGuestBusy(true);
+    setGuestError("");
+    const { error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      setGuestError(error.message);
+      setGuestBusy(false);
+      return;
+    }
+    router.replace("/lobby");
   }
 
   return (
@@ -79,6 +94,31 @@ export default function Login() {
             {status === "error" ? <Text style={styles.error}>{errorMessage}</Text> : null}
           </>
         )}
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>o</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <PressableScale
+          style={[styles.guestButton, guestBusy && styles.buttonDisabled]}
+          onPress={playAsGuest}
+          disabled={guestBusy}
+          accessibilityRole="button"
+          accessibilityLabel="Jugar sin correo"
+          accessibilityState={{ disabled: guestBusy, busy: guestBusy }}
+        >
+          {guestBusy ? (
+            <ActivityIndicator color="#f5c542" />
+          ) : (
+            <Text style={styles.guestButtonText}>Jugar sin correo</Text>
+          )}
+        </PressableScale>
+        <Text style={styles.guestHint}>
+          Creá una sala y conseguí un código al toque, sin registrarte. Ideal para una partida rápida.
+        </Text>
+        {guestError ? <Text style={styles.error}>{guestError}</Text> : null}
       </Animated.View>
     </View>
   );
@@ -117,4 +157,17 @@ const styles = StyleSheet.create({
   buttonText: { color: "#0f2418", fontWeight: "700", fontSize: 16 },
   sent: { color: "#cfe3d8", textAlign: "center", fontSize: 16, lineHeight: 22 },
   error: { color: "#ff6b6b", marginTop: 12, textAlign: "center" },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 20 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "#ffffff1a" },
+  dividerText: { color: "#6f8f80", fontSize: 13, fontWeight: "600" },
+  guestButton: {
+    backgroundColor: "transparent",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#f5c542",
+  },
+  guestButtonText: { color: "#f5c542", fontWeight: "700", fontSize: 16 },
+  guestHint: { color: "#8fb09e", fontSize: 12, textAlign: "center", marginTop: 8, lineHeight: 17 },
 });
