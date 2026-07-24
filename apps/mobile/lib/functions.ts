@@ -72,3 +72,7 @@ export function gameCommand(input: { gameId: string; command: Record<string, unk
 export function removePlayer(input: { gameId: string; targetPlayerId: string }) {
   return invoke<{ ok: true; version: number; events: unknown[] }>("remove-player", input);
 }
+
+export function removeLobbyPlayer(input: { gameId: string; targetPlayerId: string }) {
+  return invoke<{ ok: true }>("remove-lobby-player", input);
+}

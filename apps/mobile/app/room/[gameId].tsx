@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
-import { confirmEntry, startGame } from "../../lib/functions";
+import { confirmEntry, startGame, removeLobbyPlayer } from "../../lib/functions";
 import { usePresence } from "../../lib/usePresence";
+import { useHeartbeat } from "../../lib/useHeartbeat";
+import { isDisconnected, secondsSinceLastSeen, useNowTicker } from "../../lib/reconnection";
 
 type PlayerRow = {
   id: string;
@@ -11,10 +13,17 @@ type PlayerRow = {
   display_name: string;
   seat_index: number;
   status: string;
+  last_seen_at: string;
 };
 
 type GameRow = { id: string; room_id: string; phase: string };
-type RoomRow = { id: string; invite_code: string; host_user_id: string; max_players: number };
+type RoomRow = {
+  id: string;
+  invite_code: string;
+  host_user_id: string;
+  max_players: number;
+  reconnect_timeout_seconds: number;
+};
 
 export default function Room() {
   const { gameId } = useLocalSearchParams<{ gameId: string }>();
@@ -44,14 +53,14 @@ export default function Room() {
 
     const { data: roomRow } = await supabase
       .from("rooms")
-      .select("id, invite_code, host_user_id, max_players")
+      .select("id, invite_code, host_user_id, max_players, reconnect_timeout_seconds")
       .eq("id", gameRow.room_id)
       .single();
     setRoom(roomRow);
 
     const { data: playerRows } = await supabase
       .from("players")
-      .select("id, user_id, display_name, seat_index, status")
+      .select("id, user_id, display_name, seat_index, status, last_seen_at")
       .eq("game_id", gameId)
       .order("seat_index", { ascending: true });
     setPlayers(playerRows ?? []);
@@ -80,8 +89,26 @@ export default function Room() {
 
   const onlineUserIds = usePresence(gameId!, userId);
   const me = players.find((p) => p.user_id === userId);
+  useHeartbeat(me?.id ?? null);
+  const nowTick = useNowTicker();
   const isHost = room?.host_user_id === userId;
   const activeCount = players.filter((p) => p.status === "active").length;
+
+  function isPlayerDisconnected(player: PlayerRow) {
+    return !!room && isDisconnected(player.last_seen_at, room.reconnect_timeout_seconds, nowTick);
+  }
+
+  async function handleKick(targetPlayerId: string) {
+    setError("");
+    setBusy(true);
+    try {
+      await removeLobbyPlayer({ gameId: gameId!, targetPlayerId });
+    } catch (err) {
+      setError((err as { message?: string }).message ?? "No se pudo expulsar al jugador.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleConfirm() {
     setError("");
@@ -145,6 +172,20 @@ export default function Room() {
             <Text style={[styles.playerStatus, p.status === "active" ? styles.statusActive : styles.statusWaiting]}>
               {p.status === "active" ? "confirmado" : "esperando"}
             </Text>
+            {isHost && p.user_id !== userId && isPlayerDisconnected(p) ? (
+              <Pressable
+                style={styles.kickButton}
+                disabled={busy}
+                onPress={() => handleKick(p.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Expulsar a ${p.display_name}`}
+                accessibilityState={{ disabled: busy }}
+              >
+                <Text style={styles.kickButtonText}>
+                  Expulsar ({secondsSinceLastSeen(p.last_seen_at, nowTick)}s desconectado)
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ))}
       </View>
@@ -197,12 +238,17 @@ const styles = StyleSheet.create({
   playerList: { gap: 8, marginBottom: 16 },
   playerRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
     backgroundColor: "#183a29",
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  kickButton: { backgroundColor: "#e0573f", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  kickButtonText: { color: "#fff", fontWeight: "700", fontSize: 12, textAlign: "center" },
   playerNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   playerName: { color: "#fff", fontSize: 16 },
   onlineDot: { width: 8, height: 8, borderRadius: 4 },
