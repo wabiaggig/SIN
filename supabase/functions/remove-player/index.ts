@@ -1,6 +1,6 @@
 import { processCommand } from "../../../packages/game-engine/dist/index.js";
 import { authenticate, HttpError } from "../_shared/auth.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { errorResponse, jsonResponse } from "../_shared/response.ts";
 import { loadGameState, serializeOutcome } from "../game-command/state.ts";
 
@@ -14,9 +14,10 @@ import { loadGameState, serializeOutcome } from "../game-command/state.ts";
  * sí no sabe nada de tiempo real, solo aplica el efecto una vez decidido.
  */
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const origin = req.headers.get("Origin");
+  if (req.method === "OPTIONS") return new Response("ok", { headers: buildCorsHeaders(origin) });
   if (req.method !== "POST") {
-    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."));
+    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."), origin);
   }
 
   try {
@@ -84,8 +85,8 @@ Deno.serve(async (req) => {
       throw new HttpError(500, "PERSIST_FAILED", rpcError.message);
     }
 
-    return jsonResponse({ ok: true, version: newVersion, events: result.value.events }, 200);
+    return jsonResponse({ ok: true, version: newVersion, events: result.value.events }, 200, origin);
   } catch (err) {
-    return errorResponse(err);
+    return errorResponse(err, origin);
   }
 });

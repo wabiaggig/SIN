@@ -1,11 +1,12 @@
 import { authenticate, HttpError } from "../_shared/auth.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { errorResponse, jsonResponse } from "../_shared/response.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const origin = req.headers.get("Origin");
+  if (req.method === "OPTIONS") return new Response("ok", { headers: buildCorsHeaders(origin) });
   if (req.method !== "POST") {
-    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."));
+    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."), origin);
   }
 
   try {
@@ -76,8 +77,9 @@ Deno.serve(async (req) => {
     return jsonResponse(
       { ok: true, roomId: room.id, gameId: game.id, playerId: player.id, seatIndex: player.seat_index },
       201,
+      origin,
     );
   } catch (err) {
-    return errorResponse(err);
+    return errorResponse(err, origin);
   }
 });

@@ -1,5 +1,5 @@
 import { authenticate, HttpError } from "../_shared/auth.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { errorResponse, jsonResponse } from "../_shared/response.ts";
 
 const INVITE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sin O/0/I/1 ambiguos
@@ -12,9 +12,10 @@ function generateInviteCode(): string {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const origin = req.headers.get("Origin");
+  if (req.method === "OPTIONS") return new Response("ok", { headers: buildCorsHeaders(origin) });
   if (req.method !== "POST") {
-    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."));
+    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."), origin);
   }
 
   try {
@@ -86,8 +87,8 @@ Deno.serve(async (req) => {
       .insert({ game_id: game.id, draw_pile: [], discard_pile: [] });
     if (secretsError) throw new HttpError(500, "SECRETS_CREATE_FAILED", secretsError.message);
 
-    return jsonResponse({ ok: true, roomId: room.id, gameId: game.id, inviteCode }, 201);
+    return jsonResponse({ ok: true, roomId: room.id, gameId: game.id, inviteCode }, 201, origin);
   } catch (err) {
-    return errorResponse(err);
+    return errorResponse(err, origin);
   }
 });

@@ -1,6 +1,6 @@
 import { createTwoDecks, shuffleDeck, startNewRound } from "../../../packages/game-engine/dist/index.js";
 import { authenticate, HttpError } from "../_shared/auth.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { errorResponse, jsonResponse } from "../_shared/response.ts";
 import { serializeOutcome } from "../game-command/state.ts";
 
@@ -13,9 +13,10 @@ import { serializeOutcome } from "../game-command/state.ts";
  * hubo codillo) — no se vuelve a elegir al azar.
  */
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const origin = req.headers.get("Origin");
+  if (req.method === "OPTIONS") return new Response("ok", { headers: buildCorsHeaders(origin) });
   if (req.method !== "POST") {
-    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."));
+    return errorResponse(new HttpError(405, "METHOD_NOT_ALLOWED", "Solo se acepta POST."), origin);
   }
 
   try {
@@ -134,8 +135,8 @@ Deno.serve(async (req) => {
     });
     if (rpcError) throw new HttpError(500, "PERSIST_FAILED", rpcError.message);
 
-    return jsonResponse({ ok: true, version: newVersion, dealerPlayerId: game.dealer_player_id }, 200);
+    return jsonResponse({ ok: true, version: newVersion, dealerPlayerId: game.dealer_player_id }, 200, origin);
   } catch (err) {
-    return errorResponse(err);
+    return errorResponse(err, origin);
   }
 });
