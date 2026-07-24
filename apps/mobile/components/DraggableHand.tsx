@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PlayingCard } from "./PlayingCard";
@@ -7,6 +7,42 @@ import type { Card } from "../lib/types";
 const CARD_WIDTH = 56;
 const CARD_GAP = 8;
 const SLOT_WIDTH = CARD_WIDTH + CARD_GAP;
+
+/** Envoltorio por carta: anima un "reparto" (fade + caída) una sola vez al
+ * montarse. Como React mantiene la instancia mientras la key (id de carta)
+ * no cambie, reordenar la mano nunca la reproduce de nuevo — solo se ve la
+ * primera vez que esa carta entra a la mano. */
+function HandCard({
+  children,
+  panHandlers,
+  dragStyle,
+}: {
+  children: ReactNode;
+  panHandlers?: object;
+  dragStyle?: object;
+}) {
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(enter, { toValue: 1, useNativeDriver: true, speed: 14, bounciness: 8 }).start();
+  }, [enter]);
+
+  return (
+    <Animated.View
+      {...(panHandlers ?? {})}
+      style={[
+        {
+          opacity: enter,
+          transform: [
+            { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] }) },
+          ],
+        },
+        dragStyle,
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
 
 /**
  * Mano de cartas reordenable por arrastre horizontal. El orden es
@@ -143,13 +179,13 @@ export function DraggableHand({
           const responder = responders.get(id);
           const isDragging = dragId === id;
           return (
-            <Animated.View
+            <HandCard
               key={id}
-              {...(responder?.panHandlers ?? {})}
-              style={isDragging ? { transform: [{ translateX: dragX }], zIndex: 10, elevation: 10 } : undefined}
+              panHandlers={responder?.panHandlers}
+              dragStyle={isDragging ? { transform: [{ translateX: dragX }], zIndex: 10, elevation: 10 } : undefined}
             >
               <PlayingCard card={card} selected={selected.has(id)} />
-            </Animated.View>
+            </HandCard>
           );
         })}
       </View>

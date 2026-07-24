@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { router } from "expo-router";
 import { createRoom, joinRoom } from "../lib/functions";
 import { supabase } from "../lib/supabase";
+import { PressableScale } from "../components/PressableScale";
 
 export default function Lobby() {
   const [displayName, setDisplayName] = useState("");
@@ -67,7 +68,7 @@ export default function Lobby() {
           onChangeText={setRoomName}
           accessibilityLabel="Nombre de la sala"
         />
-        <Pressable
+        <PressableScale
           style={styles.button}
           onPress={handleCreate}
           disabled={busy !== null}
@@ -76,7 +77,7 @@ export default function Lobby() {
           accessibilityState={{ disabled: busy !== null, busy: busy === "create" }}
         >
           {busy === "create" ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Crear</Text>}
-        </Pressable>
+        </PressableScale>
       </View>
 
       <View style={styles.card}>
@@ -89,7 +90,7 @@ export default function Lobby() {
           onChangeText={setInviteCode}
           accessibilityLabel="Código de sala"
         />
-        <Pressable
+        <PressableScale
           style={styles.button}
           onPress={handleJoin}
           disabled={busy !== null}
@@ -98,7 +99,7 @@ export default function Lobby() {
           accessibilityState={{ disabled: busy !== null, busy: busy === "join" }}
         >
           {busy === "join" ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Unirme</Text>}
-        </Pressable>
+        </PressableScale>
       </View>
 
       {error ? (
@@ -117,7 +118,17 @@ export default function Lobby() {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 24, backgroundColor: "#0f2418", gap: 16 },
   title: { fontSize: 36, fontWeight: "800", color: "#f5c542", textAlign: "center", marginBottom: 8 },
-  card: { backgroundColor: "#183a29", borderRadius: 16, padding: 16, gap: 10 },
+  card: {
+    backgroundColor: "#183a29",
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 2,
+  },
   cardTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
   input: {
     backgroundColor: "#0f2418",
@@ -127,7 +138,17 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
   },
-  button: { backgroundColor: "#f5c542", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  button: {
+    backgroundColor: "#f5c542",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   buttonText: { color: "#0f2418", fontWeight: "700", fontSize: 16 },
   error: { color: "#ff6b6b", textAlign: "center" },
   signOut: { alignItems: "center", marginTop: 12 },

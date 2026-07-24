@@ -6,6 +6,7 @@ import { confirmEntry, startGame, removeLobbyPlayer } from "../../lib/functions"
 import { usePresence } from "../../lib/usePresence";
 import { useHeartbeat } from "../../lib/useHeartbeat";
 import { isDisconnected, secondsSinceLastSeen, useNowTicker } from "../../lib/reconnection";
+import { PressableScale } from "../../components/PressableScale";
 
 type PlayerRow = {
   id: string;
@@ -191,7 +192,7 @@ export default function Room() {
       </View>
 
       {me?.status === "waiting" ? (
-        <Pressable
+        <PressableScale
           style={styles.button}
           onPress={handleConfirm}
           disabled={busy}
@@ -200,11 +201,11 @@ export default function Room() {
           accessibilityState={{ disabled: busy, busy }}
         >
           {busy ? <ActivityIndicator color="#0f2418" /> : <Text style={styles.buttonText}>Confirmar entrada</Text>}
-        </Pressable>
+        </PressableScale>
       ) : null}
 
       {isHost && (game.phase === "lobby" || game.phase === "waiting_for_entries") ? (
-        <Pressable
+        <PressableScale
           style={[styles.button, activeCount < 3 && styles.buttonDisabled]}
           onPress={handleStart}
           disabled={busy || activeCount < 3}
@@ -219,7 +220,7 @@ export default function Room() {
               Iniciar partida {activeCount < 3 ? `(faltan ${3 - activeCount})` : ""}
             </Text>
           )}
-        </Pressable>
+        </PressableScale>
       ) : null}
 
       {game.phase === "playing" ? <Text style={styles.playing}>¡La partida arrancó! 🎉</Text> : null}
@@ -246,6 +247,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 1,
   },
   kickButton: { backgroundColor: "#e0573f", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   kickButtonText: { color: "#fff", fontWeight: "700", fontSize: 12, textAlign: "center" },
@@ -257,7 +263,17 @@ const styles = StyleSheet.create({
   playerStatus: { fontSize: 13, fontWeight: "600" },
   statusActive: { color: "#6fcf97" },
   statusWaiting: { color: "#f2c94c" },
-  button: { backgroundColor: "#f5c542", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  button: {
+    backgroundColor: "#f5c542",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: "#0f2418", fontWeight: "700", fontSize: 16 },
   playing: { color: "#6fcf97", textAlign: "center", fontSize: 18, marginTop: 16 },

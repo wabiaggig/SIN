@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { usePresence } from "../../lib/usePresence";
@@ -11,6 +11,7 @@ import { DraggableHand } from "../../components/DraggableHand";
 import { handPoints } from "../../lib/cardDisplay";
 import { hasSin, statusColor, statusLabel } from "../../lib/playerStatus";
 import { describeEvent } from "../../lib/eventLabels";
+import { PressableScale } from "../../components/PressableScale";
 import type { Card, GameRow, PlayerRow, RoomRow, TableGroup } from "../../lib/types";
 
 type EventRow = { id: number; type: string; payload: Record<string, unknown>; created_at: string };
@@ -23,6 +24,28 @@ const WIN_TYPE_LABEL: Record<string, string> = {
 };
 
 const MAX_SCORE = 69;
+
+/** Trofeo que entra con un rebote al llegar a la pantalla de victoria. */
+function WinCelebration() {
+  const bounce = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(bounce, { toValue: 1, useNativeDriver: true, speed: 6, bounciness: 16 }).start();
+  }, [bounce]);
+
+  return (
+    <Animated.Text
+      style={[
+        styles.trophy,
+        {
+          opacity: bounce,
+          transform: [{ scale: bounce.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }],
+        },
+      ]}
+    >
+      🏆
+    </Animated.Text>
+  );
+}
 
 export default function Table() {
   const { gameId } = useLocalSearchParams<{ gameId: string }>();
@@ -181,6 +204,24 @@ export default function Table() {
   const canPlayGroups = (isPlaying && isMyTurn && (game!.current_turn_has_drawn || game!.current_turn_has_taken_discard)) || (isResolving && isMyTurn);
   const canKnock = canDrawOrTake;
 
+  // Pulso sutil en "Golpear" cuando está disponible, para que se note sin
+  // gritar — se detiene solo apenas deja de ser una opción válida.
+  const knockPulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!canKnock) {
+      knockPulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(knockPulse, { toValue: 1.06, duration: 700, useNativeDriver: true }),
+        Animated.timing(knockPulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [canKnock, knockPulse]);
+
   function toggleCard(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -235,7 +276,7 @@ export default function Table() {
     return (
       <View style={styles.center}>
         <Text style={styles.bigText}>Volaste 🪽</Text>
-        <Pressable
+        <PressableScale
           style={styles.centerButton}
           disabled={busy}
           onPress={() => run({ type: "REENTER" })}
@@ -244,7 +285,7 @@ export default function Table() {
           accessibilityState={{ disabled: busy, busy }}
         >
           <Text style={styles.actionText}>Reingresar</Text>
-        </Pressable>
+        </PressableScale>
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     );
@@ -279,7 +320,7 @@ export default function Table() {
               : null}
           </>
         ) : isHost ? (
-          <Pressable
+          <PressableScale
             style={styles.centerButton}
             disabled={busy}
             onPress={async () => {
@@ -298,7 +339,7 @@ export default function Table() {
             accessibilityState={{ disabled: busy, busy }}
           >
             <Text style={styles.actionText}>Repartir siguiente ronda</Text>
-          </Pressable>
+          </PressableScale>
         ) : (
           <Text style={styles.marginText}>Esperando a que el anfitrión reparta la siguiente ronda…</Text>
         )}
@@ -317,7 +358,8 @@ export default function Table() {
 
     return (
       <View style={styles.center}>
-        <Text style={styles.bigText}>🏆 Ganó {winner?.display_name ?? "…"}</Text>
+        <WinCelebration />
+        <Text style={styles.bigText}>Ganó {winner?.display_name ?? "…"}</Text>
         <Text style={styles.marginText}>{WIN_TYPE_LABEL[game.win_type ?? "normal"]}</Text>
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
@@ -347,7 +389,7 @@ export default function Table() {
           </Text>
         ) : null}
         {isHost ? (
-          <Pressable
+          <PressableScale
             style={styles.centerButton}
             disabled={busy}
             onPress={async () => {
@@ -371,7 +413,7 @@ export default function Table() {
             accessibilityState={{ disabled: busy, busy }}
           >
             <Text style={styles.actionText}>Jugar de nuevo</Text>
-          </Pressable>
+          </PressableScale>
         ) : (
           <Text style={styles.marginText}>Esperando a que el anfitrión inicie una nueva partida…</Text>
         )}
@@ -511,7 +553,7 @@ export default function Table() {
       </ScrollView>
 
       <View style={styles.actionBar}>
-        <Pressable
+        <PressableScale
           style={[styles.actionButton, (!canPlayGroups || selected.size < 3) && styles.disabled]}
           disabled={!canPlayGroups || selected.size < 3 || busy}
           onPress={() => run({ type: "LAY_DOWN_GROUP", cardIds: [...selected] })}
@@ -520,8 +562,8 @@ export default function Table() {
           accessibilityState={{ disabled: !canPlayGroups || selected.size < 3 || busy }}
         >
           <Text style={styles.actionText}>Bajar</Text>
-        </Pressable>
-        <Pressable
+        </PressableScale>
+        <PressableScale
           style={[styles.actionButton, (!canDiscard || selected.size !== 1) && styles.disabled]}
           disabled={!canDiscard || selected.size !== 1 || busy}
           onPress={() => run({ type: "DISCARD_CARD", cardId: [...selected][0] })}
@@ -530,18 +572,20 @@ export default function Table() {
           accessibilityState={{ disabled: !canDiscard || selected.size !== 1 || busy }}
         >
           <Text style={styles.actionText}>Descartar</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.actionButton, styles.knockButton, !canKnock && styles.disabled]}
-          disabled={!canKnock || busy}
-          onPress={() => run({ type: "KNOCK" })}
-          accessibilityRole="button"
-          accessibilityLabel="Golpear"
-          accessibilityState={{ disabled: !canKnock || busy }}
-        >
-          <Text style={styles.actionText}>Golpear</Text>
-        </Pressable>
-        <Pressable
+        </PressableScale>
+        <Animated.View style={{ flex: 1, transform: [{ scale: knockPulse }] }}>
+          <PressableScale
+            style={[styles.actionButton, styles.knockButton, !canKnock && styles.disabled]}
+            disabled={!canKnock || busy}
+            onPress={() => run({ type: "KNOCK" })}
+            accessibilityRole="button"
+            accessibilityLabel="Golpear"
+            accessibilityState={{ disabled: !canKnock || busy }}
+          >
+            <Text style={styles.actionText}>Golpear</Text>
+          </PressableScale>
+        </Animated.View>
+        <PressableScale
           style={styles.actionButton}
           disabled={busy || hand.length !== 7}
           onPress={() => run({ type: "DECLARE_ROYAL" })}
@@ -550,12 +594,12 @@ export default function Table() {
           accessibilityState={{ disabled: busy || hand.length !== 7 }}
         >
           <Text style={styles.actionText}>Royal</Text>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {isResolving && isMyTurn ? (
         <View style={styles.resolutionBar}>
-          <Pressable
+          <PressableScale
             style={styles.actionButton}
             disabled={busy}
             onPress={() => run({ type: "USE_CROSS" })}
@@ -564,8 +608,8 @@ export default function Table() {
             accessibilityState={{ disabled: busy }}
           >
             <Text style={styles.actionText}>Usar cruz</Text>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             style={styles.actionButton}
             disabled={busy}
             onPress={() => run({ type: "CONFIRM_RESOLUTION" })}
@@ -574,7 +618,7 @@ export default function Table() {
             accessibilityState={{ disabled: busy }}
           >
             <Text style={styles.actionText}>Confirmar</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       ) : null}
 
@@ -644,6 +688,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0f2418" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#0f2418", gap: 16 },
   bigText: { color: "#f5c542", fontSize: 24, fontWeight: "800" },
+  trophy: { fontSize: 64 },
   scrollBody: { padding: 16, gap: 16, paddingBottom: 24 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   pot: { color: "#f5c542", fontWeight: "700", fontSize: 16 },
@@ -664,19 +709,63 @@ const styles = StyleSheet.create({
   hand: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
   actionBar: { flexDirection: "row", gap: 8, padding: 12, backgroundColor: "#0a1a12" },
   resolutionBar: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingBottom: 12, backgroundColor: "#0a1a12" },
-  actionButton: { flex: 1, backgroundColor: "#f5c542", borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  centerButton: { backgroundColor: "#f5c542", borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28, alignItems: "center" },
+  actionButton: {
+    flex: 1,
+    backgroundColor: "#f5c542",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  centerButton: {
+    backgroundColor: "#f5c542",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   knockButton: { backgroundColor: "#e07a3f" },
   disabled: { opacity: 0.35 },
   actionText: { color: "#0f2418", fontWeight: "700" },
   error: { color: "#ff6b6b", textAlign: "center", paddingBottom: 8 },
-  summaryCard: { backgroundColor: "#183a29", borderRadius: 14, padding: 16, gap: 8, minWidth: 280 },
+  summaryCard: {
+    backgroundColor: "#183a29",
+    borderRadius: 14,
+    padding: 16,
+    gap: 8,
+    minWidth: 280,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
   summaryRow: { flexDirection: "row", justifyContent: "space-between" },
   summaryTotalRow: { borderTopWidth: 1, borderTopColor: "#ffffff22", paddingTop: 8, marginTop: 4 },
   summaryLabel: { color: "#cfe3d8" },
   summaryValue: { color: "#f5c542", fontWeight: "700" },
   modalBackdrop: { flex: 1, backgroundColor: "#00000099", alignItems: "center", justifyContent: "center" },
-  modalCard: { backgroundColor: "#183a29", borderRadius: 16, padding: 20, minWidth: 320, gap: 6 },
+  modalCard: {
+    backgroundColor: "#183a29",
+    borderRadius: 16,
+    padding: 20,
+    minWidth: 320,
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
   scoreHeaderRow: { flexDirection: "row", gap: 4, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: "#ffffff22", paddingBottom: 6 },
   scoreHeaderCell: { flex: 1, color: "#8fb09e", fontSize: 11, fontWeight: "700", textTransform: "uppercase", textAlign: "center" },
   scoreRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6 },
