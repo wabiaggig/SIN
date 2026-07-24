@@ -43,6 +43,24 @@ Deno.serve(async (req) => {
     );
   }
 
+  // REMOVE_PLAYER actúa sobre OTRO jugador (targetPlayerId), no sobre el
+  // propio llamador — no encaja en el patrón "self-only" de este endpoint
+  // (más abajo el playerId se sobrescribe con el del propio caller, algo
+  // que REMOVE_PLAYER ni siquiera usa). Solo remove-player/remove-lobby-player
+  // pueden emitirlo: verifican autoridad de anfitrión y tiempo real de
+  // desconexión antes de llamar al motor.
+  if (command.type === "REMOVE_PLAYER") {
+    return jsonResponse(
+      {
+        error: {
+          code: "UNSUPPORTED_COMMAND",
+          message: "REMOVE_PLAYER no se puede emitir por acá — usá remove-player o remove-lobby-player.",
+        },
+      },
+      400,
+    );
+  }
+
   // Cliente con el JWT del llamador — solo para identificarlo, nunca para
   // leer/escribir datos de juego (eso siempre pasa por el cliente admin).
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
